@@ -19,12 +19,14 @@
 (defevent on-drain (server client))
 
 (defparameter *max-buffer-size* 16384)
-(defstruct tcp-client
+(defstruct (tcp-client
+             (:constructor make-client (socket remote-name remote-port
+                                               &optional (buffer-size *max-buffer-size*))))
   socket
   remote-name
   remote-port
-  (read-buffer (make-array *max-buffer-size* :element-type '(unsigned-byte 8)))
-  (write-buffer (make-array *max-buffer-size* :element-type '(unsigned-byte 8))))
+  (read-buffer (make-array buffer-size :element-type '(unsigned-byte 8)))
+  (write-buffer (make-array buffer-size :element-type '(unsigned-byte 8))))
 
 (defun start-listener (server &key (host iolib:+ipv4-loopback+) (port 1337))
   (let ((event-base (make-instance 'iolib:event-base))
@@ -45,9 +47,7 @@
                                          (when-let (client-sock (iolib:accept-connection server-sock))
                                            (multiple-value-bind (name port)
                                                (iolib:remote-name client-sock)
-                                             (let ((client (make-tcp-client :socket client-sock
-                                                                            :remote-name name
-                                                                            :remote-port port)))
+                                             (let ((client (make-client client-sock name port)))
                                                (setf (gethash (cons name port) connections)
                                                      client)
                                                (on-connect server client)
