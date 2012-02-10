@@ -61,21 +61,21 @@
                       connections)
       (close event-base))))
 
-(defun start-reads (server event-base client &aux (buffer (tcp-client-read-buffer client)))
-  ;; TODO - We need to compensate for partial buffer reads, even though this passes basic tests.
+(defun start-reads (server event-base client)
   (iolib:set-io-handler event-base (iolib:socket-os-fd (tcp-client-socket client))
                         :read (lambda (&rest ig)
                                 (declare (ignore ig))
                                 (handler-case
-                                    (multiple-value-bind (buffer bytes-read)
-                                        (iolib:receive-from (tcp-client-socket client)
-                                                            :buffer buffer
-                                                            :end (length buffer))
+                                    (let* ((buffer (tcp-client-read-buffer client))
+                                           (bytes-read
+                                            (nth-value
+                                             1 (iolib:receive-from (tcp-client-socket client) :buffer buffer))))
                                       (when (zerop bytes-read)
                                         (error 'end-of-file))
-                                      (on-data server client (map-into (make-array bytes-read) #'identity buffer)))
+                                      (on-data server client (subseq buffer 0 bytes-read)))
                                   ((or iolib:socket-connection-reset-error end-of-file) (e)
                                     (on-client-error server client e))))))
+
 (defun stop-reads (server event-base client)
   (declare (ignore server))
   (iolib:remove-fd-handlers event-base (iolib:socket-os-fd (tcp-client-socket client)) :read t))
