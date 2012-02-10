@@ -88,15 +88,27 @@
 
 ;; Basic events
 (defprotocol event-driver
-  (on-listen (driver) :default-form nil)
-  (on-error (driver error) :default-form nil)
-  (on-connect (driver client) :default-form nil)
-  (on-close (driver) :default-form nil)
-  (on-data (driver client data) :default-form nil)
-  (on-timeout (driver client) :default-form nil)
-  (on-client-error (driver client error) :default-form nil)
-  (on-client-close (driver client) :default-form nil)
-  (on-drain (driver client) :default-form nil))
+  (on-listen (driver) :default-form nil :documentation
+             "Event called when the server has just started listening.")
+  (on-error (driver error) :default-form nil :documentation
+            "Event called when the server has experienced some error. ERROR is the actual condition. This
+            event is executed immediately before the server and all its clients are shut down.")
+  (on-connect (driver client) :default-form nil :documentation
+              "Event called immediately after a new CLIENT has connected to the server.")
+  (on-close (driver) :default-form nil :documentation
+            "Event called immediately after the server has been shut down.")
+  (on-data (driver client data) :default-form nil :documentation
+           "Event called when CLIENT has received new data. If SERVER-BINARY-P is true, DATA will be
+           an array of (UNSIGNED-BYTE 8). Otherwise, DATA will be a string formatted according to
+           SERVER-EXTERNAL-FORMAT-IN."  )
+  #+nil(on-timeout (driver client) :default-form nil :documentation "TODO")
+  (on-client-error (driver client error) :default-form nil :documentation
+                   "Event called when CLIENT has experienced some error. ERROR is the actual
+                   condition. This event is executed immediately before the client is shut down.")
+  (on-client-close (driver client) :default-form nil :documentation
+                   "Event called when CLIENT has been disconnected.")
+  (on-drain (driver client) :default-form nil :documentation
+            "Event called when CLIENT's output queue is empty."))
 
 ;; Client protocol
 (defparameter *max-buffer-size* 16384)
