@@ -5,6 +5,6 @@
   :depends-on (#:iolib
                #:flexi-streams
                #:alexandria)
-  :components ((:file "package")
-               (:file "conserv")))
-
+  :components ((:module src
+                        :components
+                        ((:file "conserv")))))
