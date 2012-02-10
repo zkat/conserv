@@ -55,12 +55,15 @@
   `(progn
      ,@(loop for spec in accessor-specs
             collect
-            (destructuring-bind (name type-or-lambda-list &optional documentation)
+            (destructuring-bind (name type-or-lambda-list &key documentation (default-form nil default-form-p))
                 spec
               (etypecase type-or-lambda-list
                 (list
                  `(defgeneric ,name ,type-or-lambda-list
-                    ,@(when documentation `((:documentation ,documentation)))))
+                    ,@(when documentation `((:documentation ,documentation)))
+                    ,@(when default-form-p `((:method ,type-or-lambda-list
+                                             (declare (ignorable ,@type-or-lambda-list))
+                                             ,default-form)))))
                 (symbol
                  (let ((type type-or-lambda-list))
                    (unless (member type-or-lambda-list '(:reader :writer :accessor))
@@ -70,26 +73,30 @@
                                   (eq type :accessor))
                               `((defgeneric ,name (x)
                                   ,@(when documentation
-                                          `((:documentation ,documentation))))))
+                                          `((:documentation ,documentation)))
+                                  ,@(when default-form-p `((:method (x)
+                                                           (declare (ignore x))
+                                                           ,default-form))))))
                       ,@(when (or (eq type :writer)
                                   (eq type :accessor))
                               `((defgeneric (setf ,name) (new-value x)
                                   ,@(when documentation
-                                          `((:documentation ,documentation))))))))))))))
+                                          `((:documentation ,documentation)))
+                                  ,@(when default-form-p `((:method (new-value x)
+                                                           (declare (ignore new-value x))
+                                                           ,default-form))))))))))))))
 
 ;; Basic events
-(defmacro defevent (name lambda-list &rest options)
-  `(defgeneric ,name ,lambda-list ,@options
-               (:method ,lambda-list (declare (ignore ,@lambda-list)) nil)))
-(defevent on-listen (driver))
-(defevent on-error (driver error))
-(defevent on-connect (driver client))
-(defevent on-close (driver))
-(defevent on-data (driver client data))
-(defevent on-timeout (driver client))
-(defevent on-client-error (driver client error))
-(defevent on-client-close (driver client))
-(defevent on-drain (driver client))
+(defprotocol event-driver
+  (on-listen (driver) :default-form nil)
+  (on-error (driver error) :default-form nil)
+  (on-connect (driver client) :default-form nil)
+  (on-close (driver) :default-form nil)
+  (on-data (driver client data) :default-form nil)
+  (on-timeout (driver client) :default-form nil)
+  (on-client-error (driver client error) :default-form nil)
+  (on-client-close (driver client) :default-form nil)
+  (on-drain (driver client) :default-form nil))
 
 ;; Client protocol
 (defparameter *max-buffer-size* 16384)
