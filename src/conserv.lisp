@@ -23,6 +23,8 @@
 
    ;; Server functions
    #:make-server
+   #:server-name
+   #:server-port
    #:server-external-format-in
    #:server-external-format-out
    #:server-binary-p
@@ -93,6 +95,16 @@
   (hash-table-values (server-connections server)))
 (defun server-count-clients (server)
   (hash-table-count (server-connections server)))
+
+(defun server-name (server)
+  "Returns either the server's bound host, or the filename of the local socket."
+  ;; TODO - local sockets
+  (iolib:local-name (server-socket server)))
+
+(defun server-port (server)
+  "It's an error to call this on a local socket."
+  ;; TODO - Return NIL instead of erroring?
+  (iolib:local-port (server-socket server)))
 
 ;;;
 ;;; Base client

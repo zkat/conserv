@@ -5,6 +5,12 @@
 ;; Any class can be used as a driver. All event implementations are optional.
 (defclass echo () ())
 
+(defvar *server*)
+(defmethod on-listen ((driver echo))
+  (format t "~&Server up! Listening on ~A:~A~%"
+          (server-name *server*)
+          (server-port *server*)))
+
 ;; ON-CONNECT is called whenever a new client is connected to the server.
 (defmethod on-connect ((driver echo) client)
   (format t "~&Client connected. Host: ~A, Port: ~A~%"
@@ -21,8 +27,8 @@
 (defmethod on-client-close ((driver echo) client)
   (format t "~&Client disconnected: ~S~%" client))
 
-(defun start (&key (host "127.0.0.1") (port 1337))
-  (let ((server (make-server (make-instance 'echo)
+(defun start ()
+  (let ((*server* (make-server (make-instance 'echo)
                              ;; We configure the server to be binary, since we'll only pipe
                              ;; information back to clients as it comes in. Without this option,
                              ;; :external-format-in is used to encode data received from clients.
@@ -31,4 +37,4 @@
                              ;; as character streams. :external-format-out will be used to encode
                              ;; the outgoing character data.
                              :binaryp nil)))
-    (server-listen server :host host :port port)))
+    (server-listen *server*)))
