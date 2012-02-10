@@ -50,6 +50,33 @@
 (defun queue-empty-p (q)
   (null (car q)))
 
+(defmacro defprotocol (name &body accessor-specs)
+  (declare (ignore name))
+  `(progn
+     ,@(loop for spec in accessor-specs
+            collect
+            (destructuring-bind (name type-or-lambda-list &optional documentation)
+                spec
+              (etypecase type-or-lambda-list
+                (list
+                 `(defgeneric ,name ,type-or-lambda-list
+                    ,@(when documentation `((:documentation ,documentation)))))
+                (symbol
+                 (let ((type type-or-lambda-list))
+                   (unless (member type-or-lambda-list '(:reader :writer :accessor))
+                     (error "For accessor specs, the second argument must be one of :reader, :writer, or :accessor. Got ~S instead." type))
+                   `(progn
+                      ,@(when (or (eq type :reader)
+                                  (eq type :accessor))
+                              `((defgeneric ,name (x)
+                                  ,@(when documentation
+                                          `((:documentation ,documentation))))))
+                      ,@(when (or (eq type :writer)
+                                  (eq type :accessor))
+                              `((defgeneric (setf ,name) (new-value x)
+                                  ,@(when documentation
+                                          `((:documentation ,documentation))))))))))))))
+
 ;; Basic events
 (defmacro defevent (name lambda-list &rest options)
   `(defgeneric ,name ,lambda-list ,@options
@@ -66,30 +93,26 @@
 
 ;; Client protocol
 (defparameter *max-buffer-size* 16384)
-(defgeneric client-remote-name (client))
-(defgeneric client-remote-port (client))
-(defgeneric client-socket (client))
-(defgeneric client-server (client))
-(defgeneric client-read-buffer (client))
-(defgeneric client-write-queue (client))
-(defgeneric client-write-buffer (client))
-(defgeneric (setf client-write-buffer) (new-value client))
-(defgeneric client-write-buffer-offset (client))
-(defgeneric (setf client-write-buffer-offset) (new-value client))
+(defprotocol client
+  (client-remote-name :reader)
+  (client-remote-port :reader)
+  (client-socket :reader)
+  (client-server :reader)
+  (client-read-buffer :reader)
+  (client-write-queue :reader)
+  (client-write-buffer :accessor)
+  (client-write-buffer-offset :accessor))
 
 ;; Server protocol
 (defvar *default-external-format* :utf8)
-(defgeneric server-external-format-in (server))
-(defgeneric server-external-format-out (server))
-(defgeneric server-driver (server))
-(defgeneric server-binary-p (server))
-(defgeneric (setf server-binary-p) (new-value server))
-(defgeneric server-event-base (server))
-(defgeneric (setf server-event-base) (new-value server))
-(defgeneric server-connections (server))
-(defgeneric (setf server-connections) (new-value server))
-(defgeneric server-socket (server))
-(defgeneric (setf server-socket) (new-value server))
+(defprotocol server
+  (server-external-format-in :reader)
+  (server-external-format-out :reader)
+  (server-driver :reader)
+  (server-binary-p :accessor)
+  (server-event-base :accessor)
+  (server-connections :accessor)
+  (server-socket :accessor))
 
 (defun server-list-clients (server)
   (hash-table-values (server-connections server)))
