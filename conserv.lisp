@@ -86,7 +86,7 @@
                  :external-format-out external-format-out
                  :binaryp binaryp))
 
-(defun start-listener (server &key (host iolib:+ipv4-loopback+) (port 1337))
+(defun server-listen (server &key (host iolib:+ipv4-loopback+) (port 1337))
   (unwind-protect
        (iolib:with-open-socket (server-sock :connect :passive
                                             :address-family :internet
@@ -217,4 +217,4 @@
   (write-sequence data client))
 (defmethod on-client-close ((driver echo) client)
   (format t "~&Client disconnected: ~S~%" client))
-#+nil(start-listener (make-tcp-server (make-instance 'echo)) :host "127.0.0.1" :port 1337)
+#+nil(server-listen (make-tcp-server (make-instance 'echo)) :host "127.0.0.1" :port 1337)
