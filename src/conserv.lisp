@@ -2,27 +2,27 @@
 
 ;; Basic events
 (defprotocol event-driver ()
- ((on-server-listen (driver)
+ ((server-listen (driver)
    :default-form nil
    :documentation "Event called when the server has just started listening.")
-  (on-server-error (driver error)
+  (server-error (driver error)
    :default-form (invoke-debugger error)
    :documentation "Event called when the server has experienced some error. ERROR is the actual
                    condition. This event is executed immediately before the server and all its
                    clients are shut down.")
-  (on-server-close (driver)
+  (server-close (driver)
    :default-form nil
    :documentation "Event called immediately after the server has been shut down.")
-  (on-client-connect (driver client)
+  (client-connect (driver client)
    :default-form nil
    :documentation "Event called immediately after a new CLIENT has connected to the server.")
-  (on-client-data (driver client data)
+  (client-data (driver client data)
    :default-form nil
    :documentation "Event called when CLIENT has received new data. If SERVER-BINARY-P is true, DATA
                    will be an array of (UNSIGNED-BYTE 8). Otherwise, DATA will be a string formatted
                    according to SERVER-EXTERNAL-FORMAT-IN.")
-  #+nil(on-timeout (driver client) :default-form nil :documentation "TODO")
-  (on-client-error (driver error client)
+  #+nil(timeout (driver client) :default-form nil :documentation "TODO")
+  (client-error (driver error client)
    :default-form (progn (warn "Dropping client ~S after error condition ~S. ~
                                (Do you want to redefine ON-CLIENT-ERROR?)"
                               client error)
@@ -40,15 +40,15 @@
                      (drop-connection error))
                    (defmethod on-client-error ((driver my-driver) (error blood-and-guts) client)
                      (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
-  (on-client-close (driver client)
+  (client-close (driver client)
    :default-form nil
    :documentation "Event called when CLIENT has been disconnected.")
-  (on-client-output-empty (driver client)
+  (client-output-empty (driver client)
    :default-form nil
    :documentation "Event called when CLIENT's output queue is empty."))
  (:documentation "Event drivers should define methods for the functions they're interested in
                   reacting to. All protocol methods are optional and do nothing by default.")
- (:prefix nil))
+ (:prefix on-))
 
 (defun drop-connection (&optional condition)
   "Can only be called within the scope of ON-CLIENT-ERROR."
