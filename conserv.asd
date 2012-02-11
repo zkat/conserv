@@ -6,5 +6,8 @@
                #:flexi-streams
                #:alexandria)
   :components ((:module src
+                        :serial t
                         :components
-                        ((:file "conserv")))))
+                        ((:file "package")
+                         (:file "utils")
+                         (:file "conserv")))))
