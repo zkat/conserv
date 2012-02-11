@@ -2,10 +2,23 @@
   (:use :cl :conserv))
 (in-package #:conserv-echo)
 
-;; Any class can be used as a driver. All event implementations are optional.
-(defclass echo () ())
-
+;; "Bare minimum" for an echo server, with only a couple of extra things.
 (defvar *server*)
+(defclass echo () ())
+(defun start ()
+  (let ((*server* (make-server (make-instance 'echo)
+                               ;; No point in encoding if we're just passing the data through.
+                               :binaryp t)))
+    (server-listen *server*)))
+(defmethod on-client-data ((driver echo) client data)
+  (write-sequence data client) ; Write it right back.
+  (format t "~&Data length: ~S, Bytes written: ~S, Bytes read: ~S~%"
+          (length data)
+          (client-bytes-written client)
+          (client-bytes-read client)))
+
+
+;; Other goodies to show off
 (defmethod on-server-listen ((driver echo))
   (format t "~&Server up! Listening on ~A:~A~%"
           (server-name *server*)
@@ -17,25 +30,5 @@
   ;; Clients are character output streams, so FORMAT/PRINC/ETC can all be used.
   (format client "~&Welcome. Everything you say will be echoed back to you now.~%"))
 
-(defmethod on-client-data ((driver echo) client data)
-  ;; Just write the sequence back into the client.
-  (write-sequence data client)
-  (format t "~&Data length: ~S, Bytes written: ~S, Bytes read: ~S~%"
-          (length data)
-          (client-bytes-written client)
-          (client-bytes-read client)))
-
 (defmethod on-client-close ((driver echo) client)
   (format t "~&Client disconnected: ~S~%" client))
-
-(defun start ()
-  (let ((*server* (make-server (make-instance 'echo)
-                             ;; We configure the server to be binary, since we'll only pipe
-                             ;; information back to clients as it comes in. Without this option,
-                             ;; :external-format-in is used to encode data received from clients.
-                             ;;
-                             ;; Note that regardless of this option, clients can still be written to
-                             ;; as character streams. :external-format-out will be used to encode
-                             ;; the outgoing character data.
-                             :binaryp t)))
-    (server-listen *server*)))
