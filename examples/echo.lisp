@@ -20,9 +20,12 @@
 
 ;; ON-DATA is called whenever data has been received from the client.
 (defmethod on-data ((driver echo) client data)
-  (format t "~&Data length: ~S~%" (length data))
   ;; Just write the sequence back into the client.
-  (write-sequence data client))
+  (write-sequence data client)
+  (format t "~&Data length: ~S, Bytes written: ~S, Bytes read: ~S~%"
+          (length data)
+          (client-bytes-written client)
+          (client-bytes-read client)))
 
 (defmethod on-client-close ((driver echo) client)
   (format t "~&Client disconnected: ~S~%" client))

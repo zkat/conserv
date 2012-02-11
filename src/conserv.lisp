@@ -46,7 +46,9 @@
    (read-buffer :reader)
    (write-queue :reader)
    (write-buffer :accessor)
-   (write-buffer-offset :accessor)))
+   (write-buffer-offset :accessor)
+   (bytes-read :accessor)
+   (bytes-written :accessor)))
 
 ;; Server protocol
 (defvar *default-external-format* :utf8)
@@ -87,7 +89,9 @@
    (read-buffer :reader client-read-buffer)
    (write-queue :initform (make-queue) :reader client-write-queue)
    (write-buffer :initform nil :accessor client-write-buffer)
-   (write-buffer-offset :initform 0 :accessor client-write-buffer-offset)))
+   (write-buffer-offset :initform 0 :accessor client-write-buffer-offset)
+   (bytes-read :initform 0 :accessor client-bytes-read)
+   (bytes-written :initform 0 :accessor client-bytes-written)))
 (defun make-client (server socket remote-name remote-port &optional (buffer-size *max-buffer-size*))
   (let ((client (make-instance 'client :server server :socket socket :rname remote-name :rport remote-port)))
     (setf (slot-value client 'read-buffer) (make-array buffer-size :element-type 'flex:octet))
@@ -161,6 +165,7 @@
                                              1 (iolib:receive-from (client-socket client) :buffer buffer))))
                                       (when (zerop bytes-read)
                                         (error 'end-of-file))
+                                      (incf (client-bytes-read client) bytes-read)
                                       (on-data (server-driver server) client
                                                (if (server-binary-p server)
                                                    (subseq buffer 0 bytes-read)
@@ -205,7 +210,7 @@
               (let ((bytes-written (iolib:send-to (client-socket client)
                                                   (client-write-buffer client)
                                                   :start (client-write-buffer-offset client))))
-
+                (incf (client-bytes-written client) bytes-written)
                 (when (>= (incf (client-write-buffer-offset client) bytes-written)
                           (length (client-write-buffer client)))
                   (setf (client-write-buffer client) nil)

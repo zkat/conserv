@@ -20,6 +20,8 @@
    #:client-server
    #:client-pause
    #:client-resume
+   #:client-bytes-read
+   #:client-bytes-written
 
    ;; Server functions
    #:make-server
