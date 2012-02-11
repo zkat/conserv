@@ -4,13 +4,14 @@
         #:trivial-gray-streams)
   (:export
    ;; Events
-   #:on-listen
-   #:on-error
-   #:on-connect
-   #:on-close
-   #:on-data
+   #:on-server-listen
+   #:on-server-error
+   #:on-server-close
+   #:on-client-connect
+   #:on-client-data
    #:on-client-error
-   #:on-drain
+   #:on-client-close
+   #:on-client-output-empty
    ;; #:on-timeout ; Unimplemented
 
    ;; Client functions

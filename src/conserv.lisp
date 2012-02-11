@@ -2,21 +2,21 @@
 
 ;; Basic events
 (defprotocol event-driver ()
- ((on-listen (driver)
+ ((on-server-listen (driver)
    :default-form nil
    :documentation "Event called when the server has just started listening.")
-  (on-error (driver error)
+  (on-server-error (driver error)
    :default-form nil
    :documentation "Event called when the server has experienced some error. ERROR is the actual
                    condition. This event is executed immediately before the server and all its
                    clients are shut down.")
-  (on-connect (driver client)
-   :default-form nil
-   :documentation "Event called immediately after a new CLIENT has connected to the server.")
-  (on-close (driver)
+  (on-server-close (driver)
    :default-form nil
    :documentation "Event called immediately after the server has been shut down.")
-  (on-data (driver client data)
+  (on-client-connect (driver client)
+   :default-form nil
+   :documentation "Event called immediately after a new CLIENT has connected to the server.")
+  (on-client-data (driver client data)
    :default-form nil
    :documentation "Event called when CLIENT has received new data. If SERVER-BINARY-P is true, DATA
                    will be an array of (UNSIGNED-BYTE 8). Otherwise, DATA will be a string formatted
@@ -29,7 +29,7 @@
   (on-client-close (driver client)
    :default-form nil
    :documentation "Event called when CLIENT has been disconnected.")
-  (on-drain (driver client)
+  (on-client-output-empty (driver client)
    :default-form nil
    :documentation "Event called when CLIENT's output queue is empty."))
  (:documentation "Event drivers should define methods for the functions they're interested in
@@ -143,7 +143,7 @@
 (defmethod close ((server server) &key abort)
   (maphash-values (rcurry #'close :abort abort) (server-connections server))
   (close (server-event-base server))
-  (on-close (server-driver server)))
+  (on-server-close (server-driver server)))
 
 
 ;;;
@@ -166,7 +166,7 @@
                                       (when (zerop bytes-read)
                                         (error 'end-of-file))
                                       (incf (client-bytes-read client) bytes-read)
-                                      (on-data (server-driver server) client
+                                      (on-client-data (server-driver server) client
                                                (if (server-binary-p server)
                                                    (subseq buffer 0 bytes-read)
                                                    (flex:octets-to-string buffer
@@ -215,7 +215,7 @@
                           (length (client-write-buffer client)))
                   (setf (client-write-buffer client) nil)
                   (when (queue-empty-p (client-write-queue client))
-                    (on-drain driver client))))
+                    (on-client-output-empty driver client))))
             ((or iolib:socket-connection-reset-error isys:ewouldblock isys:epipe) (e)
               (on-client-error driver client e) (close client :abort t))))
         (when (queue-empty-p (client-write-queue client))
@@ -237,7 +237,7 @@
          (setf (server-event-base server) (make-instance 'iolib:event-base)
                (server-connections server) (make-hash-table)
                (server-socket server) server-sock)
-         (on-listen (server-driver server))
+         (on-server-listen (server-driver server))
          (iolib:set-io-handler (server-event-base server) (iolib:socket-os-fd server-sock)
                                :read (lambda (&rest ig)
                                        (declare (ignore ig))
@@ -246,11 +246,11 @@
                                              (iolib:remote-name client-sock)
                                            (let ((client (make-client server client-sock name port)))
                                              (setf (gethash client (server-connections server)) client)
-                                             (on-connect (server-driver server) client)
+                                             (on-client-connect (server-driver server) client)
                                              (client-resume client)
                                              (start-writes server client))))))
          (handler-case
              (iolib:event-dispatch (server-event-base server))
            ((or iolib:socket-connection-reset-error iolib:hangup end-of-file) (e)
-             (on-error (server-driver server) e))))
+             (on-server-error (server-driver server) e))))
     (close server)))

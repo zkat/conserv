@@ -6,20 +6,18 @@
 (defclass echo () ())
 
 (defvar *server*)
-(defmethod on-listen ((driver echo))
+(defmethod on-server-listen ((driver echo))
   (format t "~&Server up! Listening on ~A:~A~%"
           (server-name *server*)
           (server-port *server*)))
 
-;; ON-CONNECT is called whenever a new client is connected to the server.
-(defmethod on-connect ((driver echo) client)
+(defmethod on-client-connect ((driver echo) client)
   (format t "~&Client connected. Host: ~A, Port: ~A~%"
           (client-remote-name client) (client-remote-port client))
   ;; Clients are character output streams, so FORMAT/PRINC/ETC can all be used.
   (format client "~&Welcome. Everything you say will be echoed back to you now.~%"))
 
-;; ON-DATA is called whenever data has been received from the client.
-(defmethod on-data ((driver echo) client data)
+(defmethod on-client-data ((driver echo) client data)
   ;; Just write the sequence back into the client.
   (write-sequence data client)
   (format t "~&Data length: ~S, Bytes written: ~S, Bytes read: ~S~%"
@@ -39,5 +37,5 @@
                              ;; Note that regardless of this option, clients can still be written to
                              ;; as character streams. :external-format-out will be used to encode
                              ;; the outgoing character data.
-                             :binaryp nil)))
+                             :binaryp t)))
     (server-listen *server*)))
