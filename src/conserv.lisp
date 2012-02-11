@@ -6,7 +6,7 @@
    :default-form nil
    :documentation "Event called when the server has just started listening.")
   (on-server-error (driver error)
-   :default-form nil
+   :default-form (invoke-debugger error)
    :documentation "Event called when the server has experienced some error. ERROR is the actual
                    condition. This event is executed immediately before the server and all its
                    clients are shut down.")
@@ -22,10 +22,24 @@
                    will be an array of (UNSIGNED-BYTE 8). Otherwise, DATA will be a string formatted
                    according to SERVER-EXTERNAL-FORMAT-IN.")
   #+nil(on-timeout (driver client) :default-form nil :documentation "TODO")
-  (on-client-error (driver client error)
-   :default-form nil
+  (on-client-error (driver error client)
+   :default-form (progn (warn "Dropping client ~S after error condition ~S. ~
+                               (Do you want to redefine ON-CLIENT-ERROR?)"
+                              client error)
+                        (drop-connection error))
    :documentation "Event called when CLIENT has experienced some error. ERROR is the actual
-                   condition. This event is executed immediately before the client is shut down.")
+                   condition. This event is executed immediately before the client is shut down.
+                   By default, this event simply drops the client connection.
+
+                   The fact that ON-CLIENT-ERROR receives the actual condition allows a sort of
+                   condition handling by specializing both the driver and the condition. For
+                   example:
+                   ;; The default DROP-CONNECTION
+                   (defmethod on-client-error ((driver my-driver) (error end-of-file) client)
+                     (format t \"~&Got an end of file.~%\")
+                     (drop-connection error))
+                   (defmethod on-client-error ((driver my-driver) (error blood-and-guts) client)
+                     (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
   (on-client-close (driver client)
    :default-form nil
    :documentation "Event called when CLIENT has been disconnected.")
@@ -35,6 +49,11 @@
  (:documentation "Event drivers should define methods for the functions they're interested in
                   reacting to. All protocol methods are optional and do nothing by default.")
  (:prefix nil))
+
+(defun drop-connection (&optional condition)
+  "Can only be called within the scope of ON-CLIENT-ERROR."
+  (let ((r (find-restart 'drop-connection condition)))
+    (when r (invoke-restart r))))
 
 ;; Client protocol
 (defparameter *max-buffer-size* 16384)
@@ -174,23 +193,29 @@
   (iolib:set-io-handler (server-event-base server) (iolib:socket-os-fd (client-socket client))
                         :read (lambda (&rest ig)
                                 (declare (ignore ig))
-                                (handler-case
-                                    (let* ((buffer (client-read-buffer client))
-                                           (bytes-read
-                                            (nth-value
-                                             1 (iolib:receive-from (client-socket client) :buffer buffer))))
-                                      (when (zerop bytes-read)
-                                        (error 'end-of-file))
-                                      (incf (client-bytes-read client) bytes-read)
-                                      (on-client-data (server-driver server) client
-                                               (if (server-binary-p server)
-                                                   (subseq buffer 0 bytes-read)
-                                                   (flex:octets-to-string buffer
-                                                                          :start 0
-                                                                          :end bytes-read
-                                                                          :external-format (server-external-format-in server)))))
-                                  ((or iolib:socket-connection-reset-error end-of-file) (e)
-                                    (on-client-error (server-driver server) client e) (close client :abort t))))))
+                                ;; NOTE - The redundant errors are there for reference.
+                                (handler-bind (((or iolib:socket-connection-reset-error
+                                                    end-of-file
+                                                    error)
+                                                (lambda (e)
+                                                  (on-client-error (server-driver server) e client))))
+                                  (restart-case
+                                      (let* ((buffer (client-read-buffer client))
+                                             (bytes-read
+                                              (nth-value
+                                               1 (iolib:receive-from (client-socket client) :buffer buffer))))
+                                        (when (zerop bytes-read)
+                                          (error 'end-of-file))
+                                        (incf (client-bytes-read client) bytes-read)
+                                        (let ((data (if (server-binary-p server)
+                                                        (subseq buffer 0 bytes-read)
+                                                        (flex:octets-to-string buffer
+                                                                               :start 0
+                                                                               :end bytes-read
+                                                                               :external-format (server-external-format-in server)))))
+                                          (on-client-data (server-driver server) client data)))
+                                    (continue () nil)
+                                    (drop-connection () (close client :abort t)))))))
 
 ;;;
 ;;; Write
@@ -222,18 +247,25 @@
      (loop
         (ensure-write-buffer server client)
         (when (client-write-buffer client)
-          (handler-case
-              (let ((bytes-written (iolib:send-to (client-socket client)
-                                                  (client-write-buffer client)
-                                                  :start (client-write-buffer-offset client))))
-                (incf (client-bytes-written client) bytes-written)
-                (when (>= (incf (client-write-buffer-offset client) bytes-written)
-                          (length (client-write-buffer client)))
-                  (setf (client-write-buffer client) nil)
-                  (when (queue-empty-p (client-write-queue client))
-                    (on-client-output-empty driver client))))
-            ((or iolib:socket-connection-reset-error isys:ewouldblock isys:epipe) (e)
-              (on-client-error driver client e) (close client :abort t))))
+          ;; TODO - the errors are mostly there for my own reference.
+          (handler-bind (((or iolib:socket-connection-reset-error
+                              isys:ewouldblock
+                              isys:epipe
+                              error)
+                          (lambda (e)
+                            (on-client-error driver e client))))
+            (restart-case
+                (let ((bytes-written (iolib:send-to (client-socket client)
+                                                    (client-write-buffer client)
+                                                    :start (client-write-buffer-offset client))))
+                  (incf (client-bytes-written client) bytes-written)
+                  (when (>= (incf (client-write-buffer-offset client) bytes-written)
+                            (length (client-write-buffer client)))
+                    (setf (client-write-buffer client) nil)
+                    (when (queue-empty-p (client-write-queue client))
+                      (on-client-output-empty driver client))))
+              (continue () nil)
+              (drop-connection () (close client :abort t)))))
         (when (queue-empty-p (client-write-queue client))
           (return))))))
 
@@ -277,10 +309,14 @@
                                                (on-client-connect (server-driver server) client)
                                                (client-resume client)
                                                (start-writes server client))))))
-           (handler-case
-               ;; TODO - in order to have a non-blocking thing, server-listen will need to be
-               ;; restructured and this will need to be extracted out into a separate function.
-               (iolib:event-dispatch (server-event-base server))
-             ((or iolib:socket-connection-reset-error iolib:hangup end-of-file) (e)
-               (on-server-error (server-driver server) e)))))
+           (handler-bind (((or iolib:socket-connection-reset-error
+                               iolib:hangup
+                               end-of-file
+                               error)
+                           (lambda (e)
+                             (on-server-error (server-driver server) e))))
+             ;; TODO - in order to have a non-blocking thing, server-listen will need to be
+             ;; restructured and this will need to be extracted out into a separate function.
+             ;; TODO - Add a restart that will simply continue to the next iteration.
+             (iolib:event-dispatch (server-event-base server)))))
     (close server)))

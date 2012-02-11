@@ -23,6 +23,7 @@
    #:client-resume
    #:client-bytes-read
    #:client-bytes-written
+   #:drop-connection
 
    ;; Server functions
    #:make-server
