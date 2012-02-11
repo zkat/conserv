@@ -59,22 +59,30 @@
    (binary-p :accessor)
    (event-base :accessor)
    (connections :accessor)
-   (socket :accessor)))
+   (socket :accessor)
+   (datagram-p :reader)))
 
 (defun server-list-clients (server)
   (hash-table-values (server-connections server)))
 (defun server-count-clients (server)
   (hash-table-count (server-connections server)))
 
+(defun server-socket-local-p (server)
+  "Returns TRUE if the server's socket is a local socket (aka a unix/IPC socket)."
+  (ecase (iolib:socket-address-family (server-socket server))
+    ((:local :file)
+     t)
+    ((:internet :ipv6 :ipv4)
+     nil)))
+
 (defun server-name (server)
   "Returns either the server's bound host, or the filename of the local socket."
-  ;; TODO - local sockets
   (iolib:local-name (server-socket server)))
 
 (defun server-port (server)
-  "It's an error to call this on a local socket."
-  ;; TODO - Return NIL instead of erroring?
-  (iolib:local-port (server-socket server)))
+  "Local sockets have no port, so this returns NIL."
+  (unless (server-socket-local-p server)
+    (iolib:local-port (server-socket server))))
 
 ;;;
 ;;; Base client
@@ -127,24 +135,32 @@
    (binaryp :initarg :binaryp :reader server-binary-p)
    (event-base :accessor server-event-base)
    (connections :accessor server-connections)
-   (socket :accessor server-socket)))
+   (socket :accessor server-socket)
+   (datagramp :initarg :datagramp :reader server-socket-datagram-p)))
 
 (defun make-server (driver
                     &key
                     binaryp
+                    datagramp
                     (external-format-in *default-external-format*)
                     (external-format-out *default-external-format*))
   (make-instance 'server
                  :driver driver
                  :external-format-in external-format-in
                  :external-format-out external-format-out
-                 :binaryp binaryp))
+                 :binaryp binaryp
+                 :datagramp datagramp))
 
 (defmethod close ((server server) &key abort)
-  (maphash-values (rcurry #'close :abort abort) (server-connections server))
-  (close (server-event-base server))
+  (when (slot-boundp server 'connections)
+    (maphash-values (rcurry #'close :abort abort) (server-connections server)))
+  (when (slot-boundp server 'event-base)
+    (close (server-event-base server)))
+  (when (and (slot-boundp server 'socket)
+             (server-socket server))
+    (when (server-socket-local-p server)
+      (delete-file (server-name server))))
   (on-server-close (server-driver server)))
-
 
 ;;;
 ;;; Read
@@ -226,31 +242,45 @@
 ;;;
 (defun server-listen (server &key (host iolib:+ipv4-loopback+) (port 1337))
   (unwind-protect
-       (iolib:with-open-socket (server-sock :connect :passive
-                                            :address-family :internet
-                                            :type :stream
-                                            :ipv6 nil
-                                            :local-host host
-                                            :local-port port
-                                            :reuse-address t
-                                            :backlog 5)
-         (setf (server-event-base server) (make-instance 'iolib:event-base)
-               (server-connections server) (make-hash-table)
-               (server-socket server) server-sock)
-         (on-server-listen (server-driver server))
-         (iolib:set-io-handler (server-event-base server) (iolib:socket-os-fd server-sock)
-                               :read (lambda (&rest ig)
-                                       (declare (ignore ig))
-                                       (when-let (client-sock (iolib:accept-connection server-sock))
-                                         (multiple-value-bind (name port)
-                                             (iolib:remote-name client-sock)
-                                           (let ((client (make-client server client-sock name port)))
-                                             (setf (gethash client (server-connections server)) client)
-                                             (on-client-connect (server-driver server) client)
-                                             (client-resume client)
-                                             (start-writes server client))))))
-         (handler-case
-             (iolib:event-dispatch (server-event-base server))
-           ((or iolib:socket-connection-reset-error iolib:hangup end-of-file) (e)
-             (on-server-error (server-driver server) e))))
+       (let ((args
+              `(:connect :passive
+                :address-family ,(if (pathnamep host)
+                                     :local
+                                     :internet)
+                :type ,(if (server-socket-datagram-p server)
+                           :datagram
+                           :stream)
+                ,@(unless (server-socket-datagram-p server)`(:backlog 5))
+                :ipv6 nil
+                ,(if (pathnamep host)
+                     :local-filename
+                     :local-host)
+                ,(if (pathnamep host)
+                     (namestring host)
+                     host)
+                ,@(unless (pathnamep host)
+                    `(:local-port ,port))
+                :reuse-address t)))
+         (with-open-stream (server-sock (apply #'iolib:make-socket args))
+           (setf (server-event-base server) (make-instance 'iolib:event-base)
+                 (server-connections server) (make-hash-table)
+                 (server-socket server) server-sock)
+           (on-server-listen (server-driver server))
+           (iolib:set-io-handler (server-event-base server) (iolib:socket-os-fd server-sock)
+                                 :read (lambda (&rest ig)
+                                         (declare (ignore ig))
+                                         (when-let (client-sock (iolib:accept-connection server-sock))
+                                           (multiple-value-bind (name port)
+                                               (iolib:remote-name client-sock)
+                                             (let ((client (make-client server client-sock name port)))
+                                               (setf (gethash client (server-connections server)) client)
+                                               (on-client-connect (server-driver server) client)
+                                               (client-resume client)
+                                               (start-writes server client))))))
+           (handler-case
+               ;; TODO - in order to have a non-blocking thing, server-listen will need to be
+               ;; restructured and this will need to be extracted out into a separate function.
+               (iolib:event-dispatch (server-event-base server))
+             ((or iolib:socket-connection-reset-error iolib:hangup end-of-file) (e)
+               (on-server-error (server-driver server) e)))))
     (close server)))
