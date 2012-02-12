@@ -3,7 +3,7 @@
 ;; Events
 (defprotocol socket-event-driver (a)
   ((error (driver socket error)
-    :default-form (drop-connection error)
+    :default-form nil
     :documentation "Event called when SOCKET has experienced some error. ERROR is the actual
                     condition. This event is executed immediately before the client is shut down.
                     By default, this event simply drops the client connection.
@@ -11,7 +11,6 @@
                     The fact that ON-SOCKET-ERROR receives the actual condition allows a sort of
                     condition handling by specializing both the driver and the condition. For
                     example:
-                    ;; The default DROP-CONNECTION
                     (defmethod on-socket-error ((driver my-driver) socket (error end-of-file))
                       (format t \"~&Got an end of file.~%\")
                       (drop-connection error))
@@ -195,7 +194,7 @@
                                                     end-of-file
                                                     error)
                                                 (lambda (e)
-                                                  (on-socket-error (socket-driver socket) e socket))))
+                                                  (on-socket-error (socket-driver socket) socket e))))
                                   (restart-case
                                       (let* ((buffer (socket-read-buffer socket))
                                              (bytes-read
@@ -247,7 +246,7 @@
                               isys:epipe
                               error)
                           (lambda (e)
-                            (on-socket-error driver e socket))))
+                            (on-socket-error driver socket e))))
             (restart-case
                 (let ((bytes-written (iolib:send-to (socket-internal-socket socket)
                                                     (socket-write-buffer socket)
