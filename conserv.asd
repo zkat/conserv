@@ -10,4 +10,6 @@
                         :components
                         ((:file "package")
                          (:file "utils")
-                         (:file "conserv")))))
+                         (:file "event-loop")
+                         (:file "socket")
+                         (:file "tcp-server")))))
