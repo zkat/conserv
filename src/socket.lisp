@@ -33,7 +33,7 @@
   (:documentation "Defines the base API for standard sockets."))
 
 (defun drop-connection (&optional condition)
-  "Can only be called within the scope of ON-CLIENT-ERROR."
+  "Can only be called within the scope of ON-SOCKET-ERROR."
   (let ((r (find-restart 'drop-connection condition)))
     (when r (invoke-restart r))))
 
