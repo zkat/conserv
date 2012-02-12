@@ -1,31 +1,31 @@
 (in-package #:conserv)
 
-(defprotocol tcp-server-event-driver ()
-  ((listen (driver server) ; TODO - pass the listening address and port?
+(defprotocol tcp-server-event-driver (a)
+  ((listen ((driver a) server)            ; TODO - pass the listening address and port?
     :default-form nil
     :documentation "Event called when SERVER has started listening.")
-   (connection (driver server client)
+   (connection ((driver a) server client)
     :default-form nil
     :documentation "Event called when a new CLIENT has successfully connected to SERVER.")
-   (error (driver server error)
+   (error ((driver a) server error)
     :default-form (invoke-debugger error)
     :documentation "Event called when the server has experienced some error. ERROR is the actual
                     condition that was signaled. This event is called immediately before the server
                     and all its connected client sockets are closed.")
-   (close (driver server)
+   (close ((driver a) server)
     :default-form nil
     :documentation "Event called when the server has been closed."))
   (:prefix on-tcp-server-)
   (:documentation "Protocol for TCP servers."))
 
-(defprotocol server (fundamental-stream)
-  ((external-format-in :reader)
-   (external-format-out :reader)
-   (driver :reader)
-   (binary-p :accessor)
-   (socket :accessor
+(defprotocol server (a)
+  ((external-format-in ((server a)))
+   (external-format-out ((server a)))
+   (driver ((server a)))
+   (binary-p ((server a)) :accessorp t)
+   (socket ((server a)) :accessorp t
     :documentation "The conserv socket associated with this server.")
-   (client-driver :reader
+   (client-driver ((server a))
     :documentation "Driver to use when accepting new client sockets.")))
 
 (defclass server ()

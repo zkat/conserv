@@ -1,7 +1,7 @@
 (in-package #:conserv)
 
 ;; Events
-(defprotocol socket-event-driver ()
+(defprotocol socket-event-driver (a)
   ((error (driver socket error)
     :default-form (drop-connection error)
     :documentation "Event called when SOCKET has experienced some error. ERROR is the actual
@@ -17,16 +17,16 @@
                       (drop-connection error))
                     (defmethod on-socket-error ((driver my-driver) socket (error blood-and-guts))
                       (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
-   (connect (driver socket)
+   (connect ((driver a) socket)
     :default-form nil
     :documentation "Event called immediately after a successful SOCKET-CONNECT.")
-   (data (driver socket data)
+   (data ((driver a) socket data)
     :default-form nil
     :documentation "Event called when SOCKET has received some new DATA.")
-   (close (driver socket)
+   (close ((driver a) socket)
     :default-form nil
     :documentation "Event called when SOCKET has been disconnected.")
-   (output-empty (driver socket)
+   (output-empty ((driver a) socket)
     :default-form nil
     :documentation "Event called when SOCKET's output queue is empty."))
   (:prefix on-socket-)
@@ -38,32 +38,40 @@
     (when r (invoke-restart r))))
 
 ;; Base socket protocol
-(defprotocol socket (binary-output-stream character-output-stream)
-  ((driver :reader
+(defprotocol socket (a)
+  ((driver ((socket a))
     :documentation "Driver object used to dispatch SOCKET's events.")
-   (server :accessor
+   (server ((socket a))
+    :accessorp t
     :documentation "Holds the associated server object if this socket was accepted by a server.")
-   (internal-socket :accessor
+   (internal-socket ((socket a))
+    :accessorp t
     :documentation "Internal IOLib socket for this conserv socket.")
-   (read-buffer :reader)
-   (write-queue :reader)
-   (write-buffer :accessor)
-   (write-buffer-offset :accessor)
+   (read-buffer ((socket a)))
+   (write-queue ((socket a)))
+   (write-buffer ((socket a))
+    :accessorp t)
+   (write-buffer-offset ((socket a))
+    :accessorp t)
    ;; TODO - Make it an accessor so buffer sizes can be dynamically changed by users.
    #+nil(buffer-size :accessor)
-   (bytes-read :accessor)
-   (bytes-written :accessor)
-   (external-format-in :reader
+   (bytes-read ((socket a))
+    :accessorp t)
+   (bytes-written ((socket a))
+    :accessorp t)
+   (external-format-in ((socket a))
     :documentation "External format to use when converting incoming octets into characters.")
-   (external-format-out :reader
+   (external-format-out ((socket a))
     :documentation "External format to use for outgoing octets and strings.")
-   (binary-p :accessor
+   (binary-p ((socket a))
+    :accessorp t
     :documentation "If true, incoming data will not be converted to strings. ON-SOCKET-DATA will
                     instead return the raw (UNSIGNED-BYTE 8) arrays. In this mode,
                     SOCKET-EXTERNAL-FORMAT-OUT will only be used when converting input strings for
                     output -- binary input data (as through WRITE-SEQUENCE) will not be
                     converted. SOCKET-EXTERNAL-FORMAT-IN is not used at all in binary mode.
-                    This value can be changed after a socket has already been created.")))
+                    This value can be changed after a socket has already been created."))
+  (:prefix socket-))
 
 ;;; Implementation
 (defvar *default-external-format* :utf8)
