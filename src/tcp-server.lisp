@@ -63,6 +63,8 @@
 (defmethod close ((server server) &key abort)
   (mapcar (rcurry #'close :abort abort) (server-list-clients server))
   (clrhash (server-connections server))
+  (when (socket-local-p (server-socket server))
+    (delete-file (pathname (socket-local-name (server-socket server)))))
   (close (server-socket server) :abort abort)
   (unregister-socket server)
   (on-tcp-server-close (server-driver server) server))
@@ -91,15 +93,21 @@
                (socket-resume socket)
                (start-writes socket))))))
 
-(defun server-listen (server &key (host iolib:+ipv4-unspecified+) (port 1337))
+(defun server-listen (server &key (host iolib:+ipv4-unspecified+) (port (unless (pathnamep host) 1337)))
   "Binds the server's socket to an address and starts listening on it."
-  (let ((internal-socket (iolib:make-socket :connect :passive
-                                            :ipv6 nil
-                                            :backlog 5
-                                            :local-host host
-                                            :local-port port
-                                            :reuse-address t))
-        (socket (make-socket (server-driver server))))
+  (let* ((socket-args `(:connect :passive
+                        :address-family ,(if (pathnamep host)
+                                             :local
+                                             :internet)
+                        :backlog 5
+                        :ipv6 nil
+                        ,@(if (pathnamep host)
+                              `(:local-filename ,(namestring host))
+                              `(:local-host ,host))
+                        ,@(unless (pathnamep host)
+                            `(:local-port ,port))))
+         (internal-socket (apply #'iolib:make-socket socket-args))
+         (socket (make-socket (server-driver server))))
     (setf (socket-internal-socket socket) internal-socket
           (server-socket server) socket)
     (register-socket server)

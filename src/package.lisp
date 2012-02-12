@@ -3,35 +3,51 @@
         #:alexandria
         #:trivial-gray-streams)
   (:export
-   ;; Events
-   #:on-server-listen
-   #:on-server-error
-   #:on-server-close
-   #:on-client-connect
-   #:on-client-data
-   #:on-client-error
-   #:on-client-close
-   #:on-client-output-empty
-   ;; #:on-timeout ; Unimplemented
+   ;; event loop
+   #:call-with-event-loop
+   #:with-event-loop
+   #:add-timer
+   #:remove-timer
 
-   ;; Client functions
-   #:*max-buffer-size*
-   #:client-remote-name
-   #:client-remote-port
-   #:client-server
-   #:client-pause
-   #:client-resume
-   #:client-bytes-read
-   #:client-bytes-written
+   ;; Sockets
+   #:on-socket-error
+   #:on-socket-connect
+   #:on-socket-data
+   #:on-socket-close
+   #:on-socket-output-empty
    #:drop-connection
 
-   ;; Server functions
+   #:*max-buffer-size*
+   #:make-socket
+   #:socket-driver
+   #:socket-external-format-in
+   #:socket-external-format-out
+   #:socket-binary-p
+   #:socket-connect
+   #:socket-local-p
+   #:socket-remote-name
+   #:socket-remote-port
+   #:socket-local-name
+   #:socket-local-port
+   #:socket-paused-p
+   #:socket-pause
+   #:socket-resume
+
+   ;; Servers
+
+   #:on-tcp-server-listen
+   #:on-tcp-server-connection
+   #:on-tcp-server-error
+   #:on-tcp-server-close
+
    #:make-server
-   #:server-name
-   #:server-port
+   #:server-driver
+   #:server-socket
    #:server-external-format-in
    #:server-external-format-out
    #:server-binary-p
    #:server-list-clients
    #:server-count-clients
+   #:server-pause
+   #:server-resume
    #:server-listen))
