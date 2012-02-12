@@ -22,3 +22,9 @@
 
 (defun unregister-socket (socket)
   (remhash socket *active-sockets*))
+
+(defun add-timer (function timeout &key one-shot)
+  (iolib:add-timer *event-base* function timeout :one-shot one-shot))
+
+(defun remove-timer (timer)
+  (iolib:remove-timer *event-base* timer))
