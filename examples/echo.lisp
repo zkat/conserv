@@ -2,33 +2,23 @@
   (:use :cl :conserv))
 (in-package #:conserv-echo)
 
-;; "Bare minimum" for an echo server, with only a couple of extra things.
-(defvar *server*)
-(defclass echo () ())
-(defun start ()
-  (let ((*server* (make-server (make-instance 'echo)
-                               ;; No point in encoding if we're just passing the data through.
-                               :binaryp t)))
-    (server-listen *server*)))
-(defmethod on-client-data ((driver echo) client data)
-  (write-sequence data client) ; Write it right back.
-  (format t "~&Data length: ~S, Bytes written: ~S, Bytes read: ~S~%"
-          (length data)
-          (client-bytes-written client)
-          (client-bytes-read client)))
+(defclass echo-test () ())
+(defmethod on-tcp-server-connection ((driver echo-test) server client)
+  (format client "~&Hello. Welcome to the server (~S).~%" server))
+(defmethod on-socket-data ((driver echo-test) socket data)
+  (write-sequence data socket))
+(defun basic-echo ()
+  (let ((driver (make-instance 'echo-test)))
+    (with-event-loop ()
+      (server-listen (make-server driver) :host "0.0.0.0" :port 1337))))
 
-
-;; Other goodies to show off
-(defmethod on-server-listen ((driver echo))
-  (format t "~&Server up! Listening on ~A:~A~%"
-          (server-name *server*)
-          (server-port *server*)))
-
-(defmethod on-client-connect ((driver echo) client)
-  (format t "~&Client connected. Host: ~A, Port: ~A~%"
-          (client-remote-name client) (client-remote-port client))
-  ;; Clients are character output streams, so FORMAT/PRINC/ETC can all be used.
-  (format client "~&Welcome. Everything you say will be echoed back to you now.~%"))
-
-(defmethod on-client-close ((driver echo) client)
-  (format t "~&Client disconnected: ~S~%" client))
+;; Scalability test
+;; To take this much higher than this number, you'll likely need to mess with file descriptor
+;; limits.
+(defparameter *max-echo-clients*  500)
+(defun super-echo ()
+  (let ((server (make-server (make-instance 'echo-test))))
+    (with-event-loop ()
+      (server-listen server :port 1338)
+      (loop repeat *max-echo-clients* do
+           (socket-connect (make-socket (make-instance 'echo-test)) "127.0.0.1" 1338 :wait nil)))))
