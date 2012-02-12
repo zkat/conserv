@@ -15,6 +15,7 @@
 ;; Scalability test
 ;; To take this much higher than this number, you'll likely need to mess with file descriptor
 ;; limits.
+;; See http://www.xenoclast.org/doc/benchmark/HTTP-benchmarking-HOWTO/node7.html#SECTION00072100000000000000
 (defparameter *max-echo-clients*  500)
 (defun super-echo ()
   (let ((server (make-server (make-instance 'echo-test))))
