@@ -16,8 +16,8 @@
 (defun queue-empty-p (q)
   (null (car q)))
 
-(defmacro defprotocol (name nil genfun-specs &rest protocol-options)
-  "syntax: (defprotocol <name> ()
+(defmacro defprotocol (name parent-protocols genfun-specs &rest protocol-options)
+  "syntax: (defprotocol <name> (parent-protocol*)
              ((<genfun-name> <lambda-list>|:reader|:writer|:accessor
                [:default-form <default-form>]
                [:documentation <docstring>])*)
@@ -61,6 +61,7 @@ Finally, the :documentation argument for both the DEFPROTOCOL form and genfun sp
 provide useful documentation to the next victim of your code. In the case of genfun-specs,
 the :documentation argument is used as the :documentation argument to the defgeneric form.
 "
+  (declare (ignore parent-protocols))
   (loop for (option-name . nil) in protocol-options
      unless (member option-name '(:documentation :prefix))
      do (error "Unrecognized defprotocol option: ~S" option-name))
