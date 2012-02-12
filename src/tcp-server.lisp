@@ -67,6 +67,11 @@
   (unregister-socket server)
   (on-tcp-server-close (server-driver server) server))
 
+(defun server-pause (server &key timeout)
+  (socket-pause (server-socket server))
+  (when timeout
+    (add-timer (curry #'server-resume server) timeout :one-shot t)))
+
 (defun server-resume (server)
   (iolib:set-io-handler
    (server-event-base server)

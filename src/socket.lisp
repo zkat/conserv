@@ -155,10 +155,12 @@
                                    (iolib:socket-os-fd (socket-internal-socket socket))
                                    :read))
 
-(defun socket-pause (socket)
+(defun socket-pause (socket &key timeout)
   (iolib:remove-fd-handlers (socket-event-base socket)
                             (iolib:socket-os-fd (socket-internal-socket socket))
-                            :read t))
+                            :read t)
+  (when timeout
+    (add-timer (curry #'socket-resume socket) timeout :one-shot t)))
 
 (defun socket-resume (socket)
   (iolib:set-io-handler (socket-event-base socket)
