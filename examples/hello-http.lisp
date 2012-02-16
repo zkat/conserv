@@ -4,11 +4,11 @@
 
 (defclass hello-http () ())
 
-(defmethod on-http-request ((driver hello-http) server request response)
+(defmethod on-http-request ((driver hello-http) server request reply)
   (declare (ignore server request))
-  (setf (response-header response :content-type) "text/plain")
-  (format response "Hello, world!~%")
-  (close response))
+  (setf (reply-headers reply) '(("Content-type" . "text/plain")))
+  (format reply "Hello, world!~%")
+  (close reply))
 
 ;; Possible target:
 #+nil
@@ -19,5 +19,5 @@
 
 (defun start ()
   (with-event-loop ()
-    (server-listen (make-http-server (make-instance 'hello-http)) :port 8080)))
+    (http-listen (make-instance 'hello-http) :port 8080)))
 

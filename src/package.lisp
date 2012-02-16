@@ -47,4 +47,11 @@
    #:server-count-clients
    #:server-pause
    #:server-resume
-   #:server-listen))
+   #:server-listen
+
+   ;; HTTP
+   #:http-listen
+   #:on-http-request
+   #:on-request-data
+   #:reply-headers
+   ))
