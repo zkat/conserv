@@ -26,7 +26,7 @@
 ;; limits.
 ;; See http://www.xenoclast.org/doc/benchmark/HTTP-benchmarking-HOWTO/node7.html#SECTION00072100000000000000
 (defclass scalability (echo-test) ())
-(defmethod on-tcp-server-connection ((driver scalability) server client)
+(defmethod on-server-connection ((driver scalability) server client)
   ;; This will set the clients into an echo loop with the server.
   (format client "~&Welcome to ~A. Please echo this back.~%" server))
 (defparameter *max-echo-clients*  500)

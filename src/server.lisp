@@ -1,6 +1,6 @@
 (in-package #:conserv)
 
-(defprotocol tcp-server-event-driver (a)
+(defprotocol server-event-driver (a)
   ((listen ((driver a) server)            ; TODO - pass the listening address and port?
     :default-form nil
     :documentation "Event called when SERVER has started listening.")
@@ -15,7 +15,7 @@
    (close ((driver a) server)
     :default-form nil
     :documentation "Event called when the server has been closed."))
-  (:prefix on-tcp-server-)
+  (:prefix on-server-)
   (:documentation "Protocol for TCP servers."))
 
 (defprotocol server (a)
@@ -67,7 +67,7 @@
     (delete-file (pathname (socket-local-name (server-socket server)))))
   (close (server-socket server) :abort abort)
   (unregister-socket server)
-  (on-tcp-server-close (server-driver server) server))
+  (on-server-close (server-driver server) server))
 
 (defun server-pause (server &key timeout)
   (socket-pause (server-socket server))
@@ -89,7 +89,7 @@
                (setf (gethash socket (server-connections server)) socket
                      (socket-internal-socket socket) client-sock
                      (socket-server socket) server)
-               (on-tcp-server-connection (server-driver server) server socket)
+               (on-server-connection (server-driver server) server socket)
                (socket-resume socket)
                (start-writes socket))))))
 
@@ -121,6 +121,6 @@
     (setf (socket-internal-socket socket) internal-socket
           (server-socket server) socket)
     (register-socket server)
-    (on-tcp-server-listen (server-driver server) server)
+    (on-server-listen (server-driver server) server)
     (server-resume server)
     server))
