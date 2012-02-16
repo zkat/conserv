@@ -33,11 +33,10 @@
    #:socket-resume
 
    ;; Servers
-
-   #:on-tcp-server-listen
-   #:on-tcp-server-connection
-   #:on-tcp-server-error
-   #:on-tcp-server-close
+   #:on-server-listen
+   #:on-server-connection
+   #:on-server-error
+   #:on-server-close
 
    #:server-driver
    #:server-socket
