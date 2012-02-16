@@ -93,19 +93,29 @@
                (socket-resume socket)
                (start-writes socket))))))
 
-(defun server-listen (server &key (host iolib:+ipv4-unspecified+) (port (unless (pathnamep host) 1337)))
-  "Binds the server's socket to an address and starts listening on it."
-  (let* ((socket-args `(:connect :passive
-                        :address-family ,(if (pathnamep host)
-                                             :local
-                                             :internet)
-                        :backlog 5
-                        :ipv6 nil
-                        ,@(if (pathnamep host)
-                              `(:local-filename ,(namestring host))
-                              `(:local-host ,host))
-                        ,@(unless (pathnamep host)
-                            `(:local-port ,port))))
+(defun server-listen (driver &key
+                      (host iolib:+ipv4-unspecified+)
+                      (port (unless (pathnamep host) 1337))
+                      (external-format-in *default-external-format*)
+                      (external-format-out *default-external-format*)
+                      binaryp
+                      (client-driver driver))
+  (let* ((server (make-server driver
+                              :binaryp binaryp
+                              :external-format-in external-format-in
+                              :external-format-out external-format-out
+                              :client-driver client-driver))
+         (socket-args `(:connect :passive
+                                 :address-family ,(if (pathnamep host)
+                                                      :local
+                                                      :internet)
+                                 :backlog 5
+                                 :ipv6 nil
+                                 ,@(if (pathnamep host)
+                                       `(:local-filename ,(namestring host))
+                                       `(:local-host ,host))
+                                 ,@(unless (pathnamep host)
+                                           `(:local-port ,port))))
          (internal-socket (apply #'iolib:make-socket socket-args))
          (socket (make-socket (server-driver server))))
     (setf (socket-internal-socket socket) internal-socket

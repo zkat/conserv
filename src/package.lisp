@@ -18,7 +18,6 @@
    #:drop-connection
 
    #:*max-buffer-size*
-   #:make-socket
    #:socket-driver
    #:socket-external-format-in
    #:socket-external-format-out
@@ -40,7 +39,6 @@
    #:on-tcp-server-error
    #:on-tcp-server-close
 
-   #:make-server
    #:server-driver
    #:server-socket
    #:server-external-format-in

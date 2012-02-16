@@ -3,7 +3,7 @@
 ;; Events
 (defprotocol socket-event-driver (a)
   ((error (driver socket error)
-    :default-form nil
+    :default-form (drop-connection error)
     :documentation "Event called when SOCKET has experienced some error. ERROR is the actual
                     condition. This event is executed immediately before the client is shut down.
                     By default, this event simply drops the client connection.
@@ -133,8 +133,19 @@
     (unregister-socket socket)
     (on-socket-close (socket-driver socket) socket)))
 
-(defun socket-connect (socket host &key (port 0) (wait t))
-  (let ((internal-socket (iolib:make-socket :connect :active
+(defun socket-connect (driver host &key
+                       (port 0)
+                       (wait t)
+                       (buffer-size *max-buffer-size*)
+                       (external-format-in *default-external-format*)
+                       (external-format-out *default-external-format*)
+                       binaryp)
+  (let ((socket (make-socket driver
+                             :buffer-size buffer-size
+                             :external-format-in external-format-in
+                             :external-format-out external-format-out
+                             :binaryp binaryp))
+        (internal-socket (iolib:make-socket :connect :active
                                             :address-family (if (pathnamep host)
                                                                 :local
                                                                 :internet)
@@ -144,7 +155,8 @@
       (restart-case
           (iolib:connect internal-socket (if (pathnamep  host)
                                              (iolib:make-address (namestring host))
-                                             (iolib:lookup-hostname host)) :port port :wait wait)
+                                             (iolib:lookup-hostname host))
+                         :port port :wait wait)
         (drop-connection () (close socket :abort t))))
     (register-socket socket)
     (setf (socket-internal-socket socket) internal-socket)
