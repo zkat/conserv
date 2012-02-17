@@ -8,6 +8,7 @@
    #:with-event-loop
    #:add-timer
    #:remove-timer
+   #:exit-event-loop
 
    ;; Sockets
    #:on-socket-error

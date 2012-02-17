@@ -28,3 +28,6 @@
 
 (defun remove-timer (timer)
   (iolib:remove-timer *event-base* timer))
+
+(defun exit-event-loop (&key (delay 0))
+  (iolib:exit-event-loop *event-base* :delay delay))
