@@ -4,7 +4,8 @@
   :serial t
   :depends-on (#:iolib
                #:flexi-streams
-               #:alexandria)
+               #:alexandria
+               #:cl-ppcre)
   :components ((:module src
                         :serial t
                         :components
@@ -12,4 +13,5 @@
                          (:file "utils")
                          (:file "event-loop")
                          (:file "socket")
-                         (:file "server")))))
+                         (:file "server")
+                         (:file "http")))))

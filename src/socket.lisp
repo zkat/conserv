@@ -69,7 +69,11 @@
                     SOCKET-EXTERNAL-FORMAT-OUT will only be used when converting input strings for
                     output -- binary input data (as through WRITE-SEQUENCE) will not be
                     converted. SOCKET-EXTERNAL-FORMAT-IN is not used at all in binary mode.
-                    This value can be changed after a socket has already been created."))
+                    This value can be changed after a socket has already been created.")
+   (close-after-drain-p ((socket a))
+    :accessorp t
+    :documentation "When true, the internal socket will be closed once the socket's output buffer is
+                    drained."))
   (:prefix socket-))
 
 ;;; Implementation
@@ -89,7 +93,8 @@
    (bytes-written :initform 0 :accessor socket-bytes-written)
    (external-format-in :initarg :external-format-in :reader socket-external-format-in)
    (external-format-out :initarg :external-format-out :reader socket-external-format-out)
-   (binary-p :initarg :binaryp :accessor socket-binary-p)))
+   (binary-p :initarg :binaryp :accessor socket-binary-p)
+   (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)))
 (defun make-socket (driver &key
                     (buffer-size *max-buffer-size*)
                     (external-format-in *default-external-format*)
@@ -126,12 +131,25 @@
                          (socket-event-base socket)))
     (iolib:remove-fd-handlers evbase
                               (iolib:socket-os-fd (socket-internal-socket socket))
-                              :read t :write t :error t)
-    (close (socket-internal-socket socket) :abort abort)
+                              :read t :error t)
+    (cond (abort
+           (finish-close socket))
+          (t
+           (setf (socket-close-after-drain-p socket) t)
+           nil))))
+
+(defun finish-close (socket)
+  (when-let (evbase (and (slot-boundp socket 'internal-socket)
+                         (socket-event-base socket)))
+    (iolib:remove-fd-handlers evbase
+                             (iolib:socket-os-fd (socket-internal-socket socket))
+                             :write t)
     (when-let (server (socket-server socket))
       (remhash socket (server-connections server)))
-    (unregister-socket socket)
-    (on-socket-close (socket-driver socket) socket)))
+    (close (socket-internal-socket socket) :abort t)
+    (unregister-socket socket))
+  (on-socket-close (socket-driver socket) socket)
+  t)
 
 (defun socket-connect (driver host &key
                        (port 0)
@@ -268,7 +286,9 @@
                             (length (socket-write-buffer socket)))
                     (setf (socket-write-buffer socket) nil)
                     (when (queue-empty-p (socket-write-queue socket))
-                      (on-socket-output-empty driver socket))))
+                      (if (socket-close-after-drain-p socket)
+                          (finish-close socket)
+                          (on-socket-output-empty driver socket)))))
               (continue () nil)
               (drop-connection () (close socket :abort t)))))
         (when (queue-empty-p (socket-write-queue socket))
