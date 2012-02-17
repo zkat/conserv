@@ -6,8 +6,8 @@
 
 (defmethod on-http-request ((driver hello-http) server request reply)
   (declare (ignore server request))
-  (setf (reply-headers reply) '(("Content-type" . "text/plain")))
-  (format reply "Hello, world!~%")
+  (setf (reply-headers reply) '(("Content-type" . "text/html")))
+  (format reply "<h1>Hello, world!</h1>~%")
   (close reply))
 
 ;; Possible target:
@@ -19,5 +19,5 @@
 
 (defun start ()
   (with-event-loop ()
-    (http-listen (make-instance 'hello-http) :port 8080)))
+    (http-listen (make-instance 'hello-http) :port 8888)))
 
