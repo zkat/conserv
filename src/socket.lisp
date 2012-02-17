@@ -73,7 +73,13 @@
    (close-after-drain-p ((socket a))
     :accessorp t
     :documentation "When true, the internal socket will be closed once the socket's output buffer is
-                    drained."))
+                    drained.")
+   (reading-p ((socket a))
+    :accessorp t
+    :documentation "When true, read events are being monitored.")
+   (writing-p ((socket a))
+    :accessorp t
+    :documentation "When true, write events are being monitored."))
   (:prefix socket-))
 
 ;;; Implementation
@@ -94,7 +100,9 @@
    (external-format-in :initarg :external-format-in :reader socket-external-format-in)
    (external-format-out :initarg :external-format-out :reader socket-external-format-out)
    (binary-p :initarg :binaryp :accessor socket-binary-p)
-   (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)))
+   (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)
+   (readingp :initform nil :accessor socket-reading-p)
+   (writingp :initform nil :accessor socket-writing-p)))
 (defun make-socket (driver &key
                     (buffer-size *max-buffer-size*)
                     (external-format-in *default-external-format*)
@@ -113,25 +121,28 @@
   (or *event-base*
       (error "Operation not supported outside of the scope of WITH-EVENT-LOOP.")))
 
+(defun socket-enqueue (sequence socket)
+  (enqueue sequence (socket-write-queue socket))
+  (start-writes socket))
+
 ;;; Gray streams implementation
 (defmethod stream-write-sequence ((socket socket) sequence start end &key)
-  (enqueue (subseq sequence (or start 0) (or end (length sequence))) (socket-write-queue socket)))
+  (socket-enqueue (subseq sequence (or start 0) (or end (length sequence)))
+                  socket))
 (defmethod stream-line-column ((socket socket))
   ;; TODO
   0)
 (defmethod stream-write-char ((socket socket) character)
   ;; TODO - Meh. Maybe a buffer for very short messages or something?
-  (enqueue (make-string 1 :initial-element character) (socket-write-queue socket)))
+  (socket-enqueue (make-string 1 :initial-element character) socket))
 (defmethod stream-write-byte ((socket socket) byte)
-  (enqueue (make-array 1 :element-type 'flex:octet :initial-element byte) (socket-write-queue socket)))
+  (socket-enqueue (make-array 1 :element-type 'flex:octet :initial-element byte) socket))
 (defmethod stream-write-string ((socket socket) string &optional start end)
   (stream-write-sequence socket string start end))
 (defmethod close ((socket socket) &key abort)
   (when-let (evbase (and (slot-boundp socket 'internal-socket)
                          (socket-event-base socket)))
-    (iolib:remove-fd-handlers evbase
-                              (iolib:socket-os-fd (socket-internal-socket socket))
-                              :read t :error t)
+    (socket-pause socket)
     (cond (abort
            (finish-close socket))
           (t
@@ -141,9 +152,7 @@
 (defun finish-close (socket)
   (when-let (evbase (and (slot-boundp socket 'internal-socket)
                          (socket-event-base socket)))
-    (iolib:remove-fd-handlers evbase
-                             (iolib:socket-os-fd (socket-internal-socket socket))
-                             :write t)
+    (pause-writes socket)
     (when-let (server (socket-server socket))
       (remhash socket (server-connections server)))
     (close (socket-internal-socket socket) :abort t)
@@ -203,45 +212,47 @@
 
 ;;; Reading
 (defun socket-paused-p (socket)
-  (iolib.multiplex::fd-monitored-p (socket-event-base socket)
-                                   (iolib:socket-os-fd (socket-internal-socket socket))
-                                   :read))
+  (not (socket-reading-p socket)))
 
 (defun socket-pause (socket &key timeout)
-  (iolib:remove-fd-handlers (socket-event-base socket)
-                            (iolib:socket-os-fd (socket-internal-socket socket))
-                            :read t)
+  (unless (socket-paused-p socket)
+    (iolib:remove-fd-handlers (socket-event-base socket)
+                              (iolib:socket-os-fd (socket-internal-socket socket))
+                              :read t)
+    (setf (socket-reading-p socket) nil))
   (when timeout
     (add-timer (curry #'socket-resume socket) timeout :one-shot t)))
 
 (defun socket-resume (socket)
-  (iolib:set-io-handler (socket-event-base socket)
-                        (iolib:socket-os-fd (socket-internal-socket socket))
-                        :read (lambda (&rest ig)
-                                (declare (ignore ig))
-                                ;; NOTE - The redundant errors are there for reference.
-                                (handler-bind (((or iolib:socket-connection-reset-error
-                                                    end-of-file
-                                                    error)
-                                                (lambda (e)
-                                                  (on-socket-error (socket-driver socket) socket e))))
-                                  (restart-case
-                                      (let* ((buffer (socket-read-buffer socket))
-                                             (bytes-read
-                                              (nth-value
-                                               1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
-                                        (when (zerop bytes-read)
-                                          (error 'end-of-file))
-                                        (incf (socket-bytes-read socket) bytes-read)
-                                        (let ((data (if (socket-binary-p socket)
-                                                        (subseq buffer 0 bytes-read)
-                                                        (flex:octets-to-string buffer
-                                                                               :start 0
-                                                                               :end bytes-read
-                                                                               :external-format (socket-external-format-in socket)))))
-                                          (on-socket-data (socket-driver socket) socket data)))
-                                    (continue () nil)
-                                    (drop-connection () (close socket :abort t)))))))
+  (when (socket-paused-p socket)
+    (iolib:set-io-handler (socket-event-base socket)
+                          (iolib:socket-os-fd (socket-internal-socket socket))
+                          :read (lambda (&rest ig)
+                                  (declare (ignore ig))
+                                  ;; NOTE - The redundant errors are there for reference.
+                                  (handler-bind (((or iolib:socket-connection-reset-error
+                                                      end-of-file
+                                                      error)
+                                                  (lambda (e)
+                                                    (on-socket-error (socket-driver socket) socket e))))
+                                    (restart-case
+                                        (let* ((buffer (socket-read-buffer socket))
+                                               (bytes-read
+                                                (nth-value
+                                                 1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
+                                          (when (zerop bytes-read)
+                                            (error 'end-of-file))
+                                          (incf (socket-bytes-read socket) bytes-read)
+                                          (let ((data (if (socket-binary-p socket)
+                                                          (subseq buffer 0 bytes-read)
+                                                          (flex:octets-to-string buffer
+                                                                                 :start 0
+                                                                                 :end bytes-read
+                                                                                 :external-format (socket-external-format-in socket)))))
+                                            (on-socket-data (socket-driver socket) socket data)))
+                                      (continue () nil)
+                                      (drop-connection () (close socket :abort t))))))
+    (setf (socket-reading-p socket) t)))
 
 ;;; Writing
 (defun content->buffer (socket content)
@@ -261,35 +272,46 @@
                                          (content->buffer socket content))
           (socket-write-buffer-offset socket) 0)))
 
+(defun pause-writes (socket)
+  (when (socket-writing-p socket)
+    (iolib:remove-fd-handlers (socket-event-base socket)
+                              (iolib:socket-os-fd (socket-internal-socket socket))
+                              :write t)
+    (setf (socket-writing-p socket) nil)))
+
 (defun start-writes (socket &aux (driver (socket-driver socket)))
-  (iolib:set-io-handler
-   (socket-event-base socket) (iolib:socket-os-fd (socket-internal-socket socket))
-   :write
-   (lambda (&rest ig)
-     (declare (ignore ig))
-     (loop
-        (ensure-write-buffer socket)
-        (when (socket-write-buffer socket)
-          ;; TODO - the errors are mostly there for my own reference.
-          (handler-bind (((or iolib:socket-connection-reset-error
-                              isys:ewouldblock
-                              isys:epipe
-                              error)
-                          (lambda (e)
-                            (on-socket-error driver socket e))))
-            (restart-case
-                (let ((bytes-written (iolib:send-to (socket-internal-socket socket)
-                                                    (socket-write-buffer socket)
-                                                    :start (socket-write-buffer-offset socket))))
-                  (incf (socket-bytes-written socket) bytes-written)
-                  (when (>= (incf (socket-write-buffer-offset socket) bytes-written)
-                            (length (socket-write-buffer socket)))
-                    (setf (socket-write-buffer socket) nil)
-                    (when (queue-empty-p (socket-write-queue socket))
-                      (if (socket-close-after-drain-p socket)
-                          (finish-close socket)
-                          (on-socket-output-empty driver socket)))))
-              (continue () nil)
-              (drop-connection () (close socket :abort t)))))
-        (when (queue-empty-p (socket-write-queue socket))
-          (return))))))
+  (unless (socket-writing-p socket)
+    (iolib:set-io-handler
+     (socket-event-base socket) (iolib:socket-os-fd (socket-internal-socket socket))
+     :write
+     (lambda (&rest ig)
+       (declare (ignore ig))
+       (loop
+          (ensure-write-buffer socket)
+          (when (socket-write-buffer socket)
+            ;; TODO - the errors are mostly there for my own reference.
+            (handler-bind (((or iolib:socket-connection-reset-error
+                                isys:ewouldblock
+                                isys:epipe
+                                error)
+                            (lambda (e)
+                              (on-socket-error driver socket e))))
+              (restart-case
+                  (let ((bytes-written (iolib:send-to (socket-internal-socket socket)
+                                                      (socket-write-buffer socket)
+                                                      :start (socket-write-buffer-offset socket))))
+                    (incf (socket-bytes-written socket) bytes-written)
+                    (when (>= (incf (socket-write-buffer-offset socket) bytes-written)
+                              (length (socket-write-buffer socket)))
+                      (setf (socket-write-buffer socket) nil)
+                      (when (queue-empty-p (socket-write-queue socket))
+                        (cond ((socket-close-after-drain-p socket)
+                               (finish-close socket))
+                              (t
+                               (pause-writes socket)
+                               (on-socket-output-empty driver socket))))))
+                (continue () nil)
+                (drop-connection () (close socket :abort t)))))
+          (when (queue-empty-p (socket-write-queue socket))
+            (return)))))
+    (setf (socket-writing-p socket) t)))
