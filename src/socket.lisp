@@ -122,8 +122,8 @@
       (error "Operation not supported outside of the scope of WITH-EVENT-LOOP.")))
 
 (defun socket-enqueue (sequence socket)
-  (enqueue sequence (socket-write-queue socket))
-  (start-writes socket))
+  (prog1 (enqueue sequence (socket-write-queue socket))
+    (start-writes socket)))
 
 ;;; Gray streams implementation
 (defmethod stream-write-sequence ((socket socket) sequence start end &key)
