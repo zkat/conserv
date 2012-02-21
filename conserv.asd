@@ -14,4 +14,9 @@
                          (:file "event-loop")
                          (:file "socket")
                          (:file "server")
-                         (:file "http")))))
+                         (:module http
+                                  :serial t
+                                  :components
+                                  ((:file "package")
+                                   (:file "headers")
+                                   (:file "http")))))))

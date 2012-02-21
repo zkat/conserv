@@ -1,5 +1,5 @@
 (cl:defpackage #:conserv-hello-http
-  (:use :cl :conserv))
+  (:use :cl :conserv.http))
 (cl:in-package #:conserv-hello-http)
 
 (defclass hello-http () ())
@@ -18,6 +18,5 @@
   (close *reply*))
 
 (defun start ()
-  (with-event-loop ()
+  (conserv:with-event-loop ()
     (http-listen (make-instance 'hello-http) :port 8888)))
-

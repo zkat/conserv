@@ -3,6 +3,9 @@
         #:alexandria
         #:trivial-gray-streams)
   (:export
+   #:defprotocol
+
+   #:*default-external-format*
    ;; event loop
    #:call-with-event-loop
    #:with-event-loop
@@ -20,6 +23,7 @@
 
    #:*max-buffer-size*
    #:socket-driver
+   #:socket-server
    #:socket-external-format-in
    #:socket-external-format-out
    #:socket-binary-p
@@ -48,11 +52,4 @@
    #:server-count-clients
    #:server-pause
    #:server-resume
-   #:server-listen
-
-   ;; HTTP
-   #:http-listen
-   #:on-http-request
-   #:on-request-data
-   #:reply-headers
-   ))
+   #:server-listen))
