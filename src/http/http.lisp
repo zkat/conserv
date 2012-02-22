@@ -3,19 +3,22 @@
 ;;;
 ;;; Protocols
 ;;;
+(defvar *http-server*)
+(defvar *request*)
+(defvar *reply*)
 (defprotocol http-server-event-driver (a)
-  ((listen ((driver a) server)
+  ((listen ((driver a))
     :default-form nil)
-   (request ((driver a) server request reply)
+   (request ((driver a))
     :default-form nil)
    #+nil(connection ((driver a) server socket))
-   (close ((driver a) server)
+   (close ((driver a))
     :default-form nil)
-   (continue ((driver a) server request reply)
+   (continue ((driver a))
     :default-form nil)
-   (upgrade ((driver a) server request socket head)
+   (upgrade ((driver a) head)
     :default-form nil)
-   (error ((driver a) server error)
+   (error ((driver a) error)
     :default-form nil))
   (:prefix on-http-))
 
@@ -26,9 +29,9 @@
   (:prefix http-server-))
 
 (defprotocol request-event-driver (a)
-  ((data ((driver a) request reply data)
+  ((data ((driver a) data)
     :default-form nil)
-   (close ((driver a) request reply)
+   (close ((driver a))
     :default-form nil))
   (:prefix on-request-))
 
@@ -44,7 +47,7 @@
   (:prefix request-))
 
 (defprotocol reply-event-driver (a)
-  ((close ((driver a) reply)
+  ((close ((driver a))
     :default-form nil))
   (:prefix on-reply-))
 
@@ -77,6 +80,11 @@
   (unless (or (reply-headers-written-p reply) abort)
     (write-headers reply))
   (close (reply-socket reply) :abort abort))
+
+(defun reply-headers* ()
+  (reply-headers *reply*))
+(defun (setf reply-headers*) (new-headers)
+  (setf (reply-headers *reply*) new-headers))
 
 (defun ensure-headers-written (reply)
   (unless (reply-headers-written-p reply)
@@ -127,9 +135,12 @@
                            &aux (user-driver (http-server-driver driver)))
   (destructuring-bind (req . rep)
       (gethash socket (http-server-connections driver))
-    (if (request-method req)
-        (on-request-data user-driver req rep data)
-        (parse-headers user-driver (socket-server socket) req rep data))))
+    (let ((*request* req)
+          (*reply* rep)
+          (*http-server* driver))
+      (if (request-method req)
+          (on-request-data user-driver data)
+          (parse-headers user-driver (socket-server socket) req rep data)))))
 
 (defun parse-headers (driver server req rep data)
   (multiple-value-bind (donep parser rest)
@@ -142,8 +153,8 @@
     (when rest
       (if donep
           (progn
-            (on-http-request driver server req rep)
-            (on-request-data driver req rep rest))
+            (on-http-request driver)
+            (on-request-data driver data))
           (parse-headers driver server req rep rest)))))
 
 (defmethod on-socket-close ((driver http-server-driver) socket)

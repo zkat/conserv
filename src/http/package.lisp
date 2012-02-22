@@ -4,6 +4,10 @@
         #:trivial-gray-streams
         #:conserv)
   (:export
+   #:*http-server*
+   #:*request*
+   #:*reply*
+   #:reply-headers*
    ;; HTTP
    #:http-listen
    #:on-http-request
