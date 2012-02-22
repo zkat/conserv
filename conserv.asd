@@ -3,7 +3,8 @@
 (asdf:defsystem #:conserv
   :serial t
   :depends-on (#:iolib
-               #:flexi-streams
+               #:babel
+               #:trivial-gray-streams
                #:alexandria
                #:cl-ppcre)
   :components ((:module src

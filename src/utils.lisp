@@ -16,6 +16,11 @@
 (defun queue-empty-p (q)
   (null (car q)))
 
+(defun dequeue-all (q)
+  (prog1 (car q)
+    (setf (car q) nil
+          (cdr q) nil)))
+
 (defmacro defprotocol (name typevars genfun-specs &rest protocol-options)
   "syntax: (defprotocol <name> (<typevar>*)
              ((<genfun-name> (<var>*|(<var> <typevar>)*)

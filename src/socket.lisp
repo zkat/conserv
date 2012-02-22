@@ -1,5 +1,8 @@
 (in-package #:conserv)
 
+(deftype octet ()
+  '(unsigned-byte 8))
+
 ;; Events
 (defprotocol socket-event-driver (a)
   ((error (driver socket error)
@@ -83,7 +86,7 @@
   (:prefix socket-))
 
 ;;; Implementation
-(defvar *default-external-format* :utf8)
+(defvar *default-external-format* :utf-8)
 (defvar *max-buffer-size* 16384)
 (defclass socket (trivial-gray-stream-mixin
                   fundamental-binary-output-stream
@@ -113,7 +116,7 @@
                                :external-format-in external-format-in
                                :external-format-out external-format-out
                                :binaryp binaryp)))
-    (setf (slot-value socket 'read-buffer) (make-array buffer-size :element-type 'flex:octet))
+    (setf (slot-value socket 'read-buffer) (make-array buffer-size :element-type 'octet))
     socket))
 
 (defun socket-event-base (socket)
@@ -136,7 +139,7 @@
   ;; TODO - Meh. Maybe a buffer for very short messages or something?
   (socket-enqueue (make-string 1 :initial-element character) socket))
 (defmethod stream-write-byte ((socket socket) byte)
-  (socket-enqueue (make-array 1 :element-type 'flex:octet :initial-element byte) socket))
+  (socket-enqueue (make-array 1 :element-type 'octet :initial-element byte) socket))
 (defmethod stream-write-string ((socket socket) string &optional start end)
   (stream-write-sequence socket string start end))
 (defmethod close ((socket socket) &key abort)
@@ -245,10 +248,10 @@
                                           (incf (socket-bytes-read socket) bytes-read)
                                           (let ((data (if (socket-binary-p socket)
                                                           (subseq buffer 0 bytes-read)
-                                                          (flex:octets-to-string buffer
+                                                          (babel:octets-to-string buffer
                                                                                  :start 0
                                                                                  :end bytes-read
-                                                                                 :external-format (socket-external-format-in socket)))))
+                                                                                 :encoding (socket-external-format-in socket)))))
                                             (on-socket-data (socket-driver socket) socket data)))
                                       (continue () nil)
                                       (drop-connection () (close socket :abort t))))))
@@ -258,19 +261,29 @@
 (defun content->buffer (socket content)
   "Given CONTENT, which can be any lisp data, converts that data to an array of '(unsigned-byte 8)"
   (etypecase content
-    ((simple-array flex:octet)
+    ((simple-array octet)
      content)
     (string
-     (flex:string-to-octets content :external-format (socket-external-format-out socket)))
-    ((or (array flex:octet) (cons flex:octet))
-     (map-into (make-array (length content) :element-type 'flex:octet)
+     (babel:string-to-octets content :encoding (socket-external-format-out socket)))
+    ((or (array octet) (cons octet))
+     (map-into (make-array (length content) :element-type 'octet)
                content))))
 
+(defun coalesce-outputs (socket)
+  (let* ((outputs (dequeue-all (socket-write-queue socket)))
+         (total (reduce #'+ outputs :key #'length)))
+    (loop with buffer = (make-array total :element-type 'octet)
+       with index = 0
+       for output in outputs
+       do (loop for byte across (content->buffer socket output)
+             do (setf (aref buffer index) byte)
+               (incf index))
+       finally (return buffer))))
+
 (defun ensure-write-buffer (socket)
-  (unless (socket-write-buffer socket)
-    (setf (socket-write-buffer socket) (when-let (content (dequeue (socket-write-queue socket)))
-                                         (content->buffer socket content))
-          (socket-write-buffer-offset socket) 0)))
+  (or (socket-write-buffer socket)
+      (setf (socket-write-buffer-offset socket) 0
+            (socket-write-buffer socket) (coalesce-outputs socket))))
 
 (defun pause-writes (socket)
   (when (socket-writing-p socket)
@@ -287,8 +300,7 @@
      (lambda (&rest ig)
        (declare (ignore ig))
        (loop
-          (ensure-write-buffer socket)
-          (when (socket-write-buffer socket)
+          (when-let (buffer (ensure-write-buffer socket))
             ;; TODO - the errors are mostly there for my own reference.
             (handler-bind (((or iolib:socket-connection-reset-error
                                 isys:ewouldblock
@@ -298,7 +310,7 @@
                               (on-socket-error driver socket e))))
               (restart-case
                   (let ((bytes-written (iolib:send-to (socket-internal-socket socket)
-                                                      (socket-write-buffer socket)
+                                                      buffer
                                                       :start (socket-write-buffer-offset socket))))
                     (incf (socket-bytes-written socket) bytes-written)
                     (when (>= (incf (socket-write-buffer-offset socket) bytes-written)
