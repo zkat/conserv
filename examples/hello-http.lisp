@@ -5,15 +5,9 @@
 (defclass hello-http () ())
 
 (defmethod on-http-request ((driver hello-http))
+  ;; TODO - keyword headers? (setf (reply-header* :content-type) "text/html")
   (setf (reply-headers*) '(("Content-type" . "text/html")))
   (format *reply* "<h1>Hello, world!</h1>~%")
-  (close *reply*))
-
-;; Possible target:
-#+nil
-(defmethod on-http-request ((driver hello-http))
-  (setf (reply-header* :content-type) "text/plain")
-  (format *reply* "Hello, world!~%")
   (close *reply*))
 
 (defun start ()
