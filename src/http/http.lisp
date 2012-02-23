@@ -136,13 +136,21 @@
    (connections :initform (make-hash-table) :accessor http-server-connections)))
 
 (defun new-request (driver socket)
-  (setf (gethash socket (http-server-connections driver))
-        (cons (make-instance 'request
-                             :socket socket
-                             :external-format :utf-8 #+nil(server-external-format-in *server*))
-              (make-instance 'reply
-                             :socket socket
-                             :http-server driver))))
+  (let ((existing (gethash socket (http-server-connections driver))))
+    (setf (gethash socket (http-server-connections driver))
+          (if existing
+              (cons (shared-initialize (car existing) t
+                                       :socket socket
+                                       :external-format :utf-8)
+                    (shared-initialize (cdr existing) t
+                                       :socket socket
+                                       :http-server driver))
+              (cons (make-instance 'request
+                                   :socket socket
+                                   :external-format :utf-8 #+nil(server-external-format-in *server*))
+                    (make-instance 'reply
+                                   :socket socket
+                                   :http-server driver))))))
 
 (defmethod on-server-connection ((driver http-server-driver) socket)
   (new-request driver socket))
