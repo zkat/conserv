@@ -14,6 +14,7 @@
    #:exit-event-loop
 
    ;; Sockets
+   #:*socket*
    #:on-socket-error
    #:on-socket-connect
    #:on-socket-data
@@ -38,6 +39,7 @@
    #:socket-resume
 
    ;; Servers
+   #:*server*
    #:on-server-listen
    #:on-server-connection
    #:on-server-error

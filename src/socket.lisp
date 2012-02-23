@@ -4,10 +4,11 @@
   '(unsigned-byte 8))
 
 ;; Events
+(defvar *socket*)
 (defprotocol socket-event-driver (a)
-  ((error (driver socket error)
-    :default-form (drop-connection error)
-    :documentation "Event called when SOCKET has experienced some error. ERROR is the actual
+  ((error (driver error)
+    :default-form #+nil(drop-connection error) nil
+    :documentation "Event called when *SOCKET* has experienced some error. ERROR is the actual
                     condition. This event is executed immediately before the client is shut down.
                     By default, this event simply drops the client connection.
 
@@ -19,18 +20,18 @@
                       (drop-connection error))
                     (defmethod on-socket-error ((driver my-driver) socket (error blood-and-guts))
                       (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
-   (connect ((driver a) socket)
+   (connect ((driver a))
     :default-form nil
     :documentation "Event called immediately after a successful SOCKET-CONNECT.")
-   (data ((driver a) socket data)
+   (data ((driver a) data)
     :default-form nil
-    :documentation "Event called when SOCKET has received some new DATA.")
-   (close ((driver a) socket)
+    :documentation "Event called when *SOCKET* has received some new DATA.")
+   (close ((driver a))
     :default-form nil
-    :documentation "Event called when SOCKET has been disconnected.")
-   (output-empty ((driver a) socket)
+    :documentation "Event called when *SOCKET* has been disconnected.")
+   (output-empty ((driver a))
     :default-form nil
-    :documentation "Event called when SOCKET's output queue is empty."))
+    :documentation "Event called when *SOCKET*'s output queue is empty."))
   (:prefix on-socket-)
   (:documentation "Defines the base API for standard sockets."))
 
@@ -160,7 +161,8 @@
       (remhash socket (server-connections server)))
     (close (socket-internal-socket socket) :abort t)
     (unregister-socket socket))
-  (on-socket-close (socket-driver socket) socket)
+  (let ((*socket* socket))
+    (on-socket-close (socket-driver socket)))
   t)
 
 (defun socket-connect (driver host &key
@@ -180,8 +182,8 @@
                                                                 :local
                                                                 :internet)
                                             :ipv6 nil)))
-    (handler-bind ((error (lambda (e)
-                            (on-socket-error (socket-driver socket) socket e))))
+    (handler-bind ((error (lambda (e &aux (*socket* socket))
+                            (on-socket-error (socket-driver socket) e))))
       (restart-case
           (iolib:connect internal-socket (if (pathnamep  host)
                                              (iolib:make-address (namestring host))
@@ -236,8 +238,8 @@
                                   (handler-bind (((or iolib:socket-connection-reset-error
                                                       end-of-file
                                                       error)
-                                                  (lambda (e)
-                                                    (on-socket-error (socket-driver socket) socket e))))
+                                                  (lambda (e &aux (*socket* socket))
+                                                    (on-socket-error (socket-driver socket) e))))
                                     (restart-case
                                         (let* ((buffer (socket-read-buffer socket))
                                                (bytes-read
@@ -252,7 +254,8 @@
                                                                                  :start 0
                                                                                  :end bytes-read
                                                                                  :encoding (socket-external-format-in socket)))))
-                                            (on-socket-data (socket-driver socket) socket data)))
+                                            (let ((*socket* socket))
+                                              (on-socket-data (socket-driver socket) data))))
                                       (continue () nil)
                                       (drop-connection () (close socket :abort t))))))
     (setf (socket-reading-p socket) t)))
@@ -306,8 +309,8 @@
                                 isys:ewouldblock
                                 isys:epipe
                                 error)
-                            (lambda (e)
-                              (on-socket-error driver socket e))))
+                            (lambda (e &aux (*socket* socket))
+                              (on-socket-error driver e))))
               (restart-case
                   (let ((bytes-written (iolib:send-to (socket-internal-socket socket)
                                                       buffer
@@ -321,7 +324,8 @@
                                (finish-close socket))
                               (t
                                (pause-writes socket)
-                               (on-socket-output-empty driver socket))))))
+                               (let ((*socket* socket))
+                                 (on-socket-output-empty driver)))))))
                 (continue () nil)
                 (drop-connection () (close socket :abort t)))))
           (when (queue-empty-p (socket-write-queue socket))

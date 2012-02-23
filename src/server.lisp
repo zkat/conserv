@@ -1,18 +1,19 @@
 (in-package #:conserv)
 
+(defvar *server*)
 (defprotocol server-event-driver (a)
-  ((listen ((driver a) server)            ; TODO - pass the listening address and port?
+  ((listen ((driver a))            ; TODO - pass the listening address and port?
     :default-form nil
-    :documentation "Event called when SERVER has started listening.")
-   (connection ((driver a) server client)
+    :documentation "Event called when *SERVER* has started listening.")
+   (connection ((driver a) client)
     :default-form nil
-    :documentation "Event called when a new CLIENT has successfully connected to SERVER.")
-   (error ((driver a) server error)
+    :documentation "Event called when a new CLIENT has successfully connected to *SERVER*.")
+   (error ((driver a) error)
     :default-form (invoke-debugger error)
     :documentation "Event called when the server has experienced some error. ERROR is the actual
                     condition that was signaled. This event is called immediately before the server
                     and all its connected client sockets are closed.")
-   (close ((driver a) server)
+   (close ((driver a))
     :default-form nil
     :documentation "Event called when the server has been closed."))
   (:prefix on-server-)
@@ -67,7 +68,8 @@
     (delete-file (pathname (socket-local-name (server-socket server)))))
   (close (server-socket server) :abort abort)
   (unregister-socket server)
-  (on-server-close (server-driver server) server))
+  (let ((*server* server))
+    (on-server-close (server-driver server))))
 
 (defun server-pause (server &key timeout)
   (socket-pause (server-socket server))
@@ -89,7 +91,8 @@
                (setf (gethash socket (server-connections server)) socket
                      (socket-internal-socket socket) client-sock
                      (socket-server socket) server)
-               (on-server-connection (server-driver server) server socket)
+               (let ((*server* server))
+                 (on-server-connection (server-driver server) socket))
                (socket-resume socket)
                (start-writes socket))))))
 
@@ -121,6 +124,7 @@
     (setf (socket-internal-socket socket) internal-socket
           (server-socket server) socket)
     (register-socket server)
-    (on-server-listen (server-driver server) server)
+    (let ((*server* server))
+      (on-server-listen (server-driver server)))
     (server-resume server)
     server))

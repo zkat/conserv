@@ -124,15 +124,17 @@
   ((driver :initarg :driver :accessor http-server-driver)
    (connections :initform (make-hash-table) :accessor http-server-connections)))
 
-(defmethod on-server-connection ((driver http-server-driver) server socket)
+(defmethod on-server-connection ((driver http-server-driver) socket)
   (setf (gethash socket (http-server-connections driver))
         (cons (make-instance 'request
                              :socket socket
-                             :external-format (server-external-format-in server))
+                             :external-format (server-external-format-in *server*))
               (make-instance 'reply :socket socket))))
 
-(defmethod on-socket-data ((driver http-server-driver) socket data
-                           &aux (user-driver (http-server-driver driver)))
+(defmethod on-socket-data ((driver http-server-driver) data
+                           &aux
+                           (user-driver (http-server-driver driver))
+                           (socket *socket*))
   (destructuring-bind (req . rep)
       (gethash socket (http-server-connections driver))
     (let ((*request* req)
@@ -162,8 +164,8 @@
             (on-request-data driver data))
           (parse-headers driver server rest)))))
 
-(defmethod on-socket-close ((driver http-server-driver) socket)
-  (remhash socket (http-server-connections driver)))
+(defmethod on-socket-close ((driver http-server-driver))
+  (remhash *socket* (http-server-connections driver)))
 
 (defun http-listen (driver &key
                     (host iolib:+ipv4-unspecified+)

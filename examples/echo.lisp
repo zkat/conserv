@@ -5,8 +5,8 @@
 ;; 'Bare-minimum' echo server
 (defclass echo-test () ())
 
-(defmethod on-socket-data ((driver echo-test) socket data)
-  (write-sequence data socket))
+(defmethod on-socket-data ((driver echo-test) data)
+  (write-sequence data *socket*))
 
 (defun basic-echo ()
   (with-event-loop ()
@@ -28,15 +28,15 @@
 (defparameter *max-echo-clients* 10)
 (defvar *num-clients*)
 (defclass scalability (echo-test) ())
-(defmethod on-server-connection ((driver scalability) server client)
+(defmethod on-server-connection ((driver scalability) client)
   ;; This will set the clients into an echo loop with the server.
-  (format client "~&Welcome to ~A. Please echo this back.~%" server)
+  (format client "~&Welcome to ~A. Please echo this back.~%" *server*)
   (incf *num-clients*))
 (defvar *total-exchanges*)
-(defmethod on-socket-data :after ((driver scalability) socket data)
-  (declare (ignore socket data))
+(defmethod on-socket-data :after ((driver scalability) data)
+  (declare (ignore data))
   (incf *total-exchanges*))
-(defmethod on-server-close ((driver scalability) server)
+(defmethod on-server-close ((driver scalability))
   (print *num-clients*)
   (print *total-exchanges*))
 (defun super-echo ()
