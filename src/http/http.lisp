@@ -142,6 +142,7 @@
           (on-request-data user-driver data)
           (parse-headers user-driver (socket-server socket) data)))))
 
+(defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf+ +crlf+)))
 (defun parse-headers (driver server data)
   (multiple-value-bind (donep parser rest)
       (feed-parser (request-request-parser *request*) data)
@@ -153,6 +154,10 @@
     (when rest
       (if donep
           (progn
+            (when (member '("Expect" . "100-continue") (request-headers *request*)
+                          :test #'equalp)
+              ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
+              (write-sequence +100-continue+ (reply-socket *reply*)))
             (on-http-request driver)
             (on-request-data driver data))
           (parse-headers driver server rest)))))
