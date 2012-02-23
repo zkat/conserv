@@ -140,22 +140,22 @@
           (*http-server* driver))
       (if (request-method req)
           (on-request-data user-driver data)
-          (parse-headers user-driver (socket-server socket) req rep data)))))
+          (parse-headers user-driver (socket-server socket) data)))))
 
-(defun parse-headers (driver server req rep data)
+(defun parse-headers (driver server data)
   (multiple-value-bind (donep parser rest)
-      (feed-parser (request-request-parser req) data)
+      (feed-parser (request-request-parser *request*) data)
     (when donep
-      (setf (request-method req) (request-parser-method parser)
-            (request-http-version req) (request-parser-http-version parser)
-            (request-url req) (request-parser-url parser)
-            (request-headers req) (request-parser-headers parser)))
+      (setf (request-method *request*) (request-parser-method parser)
+            (request-http-version *request*) (request-parser-http-version parser)
+            (request-url *request*) (request-parser-url parser)
+            (request-headers *request*) (request-parser-headers parser)))
     (when rest
       (if donep
           (progn
             (on-http-request driver)
             (on-request-data driver data))
-          (parse-headers driver server req rep rest)))))
+          (parse-headers driver server rest)))))
 
 (defmethod on-socket-close ((driver http-server-driver) socket)
   (remhash socket (http-server-connections driver)))
