@@ -14,10 +14,6 @@
    #+nil(connection ((driver a) server socket))
    (close ((driver a))
     :default-form nil)
-   (continue ((driver a))
-    :default-form nil)
-   (upgrade ((driver a) head)
-    :default-form nil)
    (error ((driver a) error)
     :default-form nil))
   (:prefix on-http-))
@@ -31,6 +27,10 @@
 (defprotocol request-event-driver (a)
   ((data ((driver a) data)
     :default-form nil)
+   (continue ((driver a))
+    :default-form nil)
+   (upgrade ((driver a))
+    :default-form (close *request* :abort t))
    (close ((driver a))
     :default-form nil))
   (:prefix on-request-))
@@ -69,6 +69,9 @@
    (external-format :initarg :external-format :accessor request-external-format)
    (request-parser :initform (make-request-parser) :reader request-request-parser)
    (socket :initarg :socket :reader request-socket)))
+
+(defmethod close ((req request) &key abort)
+  (close (request-socket req) :abort abort))
 
 (defclass reply (trivial-gray-stream-mixin
                  fundamental-binary-output-stream
@@ -187,6 +190,10 @@
             (when (member '("Connection" . "keep-alive") (request-headers *request*)
                           :test #'equalp)
               (setf (reply-keep-alive-p *reply*) t))
+            (when (member "Upgrade" (request-headers *request*)
+                          :test #'string-equal
+                          :key #'car)
+              (on-request-upgrade driver))
             (on-http-request driver)
             (on-request-data driver data))
           (parse-headers driver server rest)))))
