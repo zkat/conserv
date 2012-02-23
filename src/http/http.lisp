@@ -56,6 +56,8 @@
    (headers ((reply a)) :accessorp t)
    (write-headers ((reply a)))
    (headers-written-p ((reply a)) :accessorp t)
+   (keep-alive-p ((reply a)) :accessorp t)
+   (http-server ((reply a)))
    (socket ((reply a))))
   (:prefix reply-))
 
@@ -74,12 +76,21 @@
   ((headers :accessor reply-headers :initform nil)
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
-   (headers-written-p :accessor reply-headers-written-p :initform nil)))
+   (headers-written-p :accessor reply-headers-written-p :initform nil)
+   (http-server :reader reply-http-server :initarg :http-server)
+   (keep-alive-p :accessor reply-keep-alive-p :initform nil)))
 
 (defmethod close ((reply reply) &key abort)
   (unless (or (reply-headers-written-p reply) abort)
     (write-headers reply))
-  (close (reply-socket reply) :abort abort))
+  (if (reply-keep-alive-p reply)
+      ;; TODO - reuse request/reply objects by reinitializing?
+      ;;        (use shared-initialize with t for slots)
+      (progn
+        (write-sequence +crlf+ (reply-socket reply))
+        (new-request (reply-http-server reply)
+                     (reply-socket reply)))
+      (close (reply-socket reply) :abort abort)))
 
 (defun reply-headers* ()
   (reply-headers *reply*))
@@ -124,12 +135,17 @@
   ((driver :initarg :driver :accessor http-server-driver)
    (connections :initform (make-hash-table) :accessor http-server-connections)))
 
-(defmethod on-server-connection ((driver http-server-driver) socket)
+(defun new-request (driver socket)
   (setf (gethash socket (http-server-connections driver))
         (cons (make-instance 'request
                              :socket socket
-                             :external-format (server-external-format-in *server*))
-              (make-instance 'reply :socket socket))))
+                             :external-format :utf-8 #+nil(server-external-format-in *server*))
+              (make-instance 'reply
+                             :socket socket
+                             :http-server driver))))
+
+(defmethod on-server-connection ((driver http-server-driver) socket)
+  (new-request driver socket))
 
 (defmethod on-socket-data ((driver http-server-driver) data
                            &aux
@@ -160,6 +176,9 @@
                           :test #'equalp)
               ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
               (write-sequence +100-continue+ (reply-socket *reply*)))
+            (when (member '("Connection" . "keep-alive") (request-headers *request*)
+                          :test #'equalp)
+              (setf (reply-keep-alive-p *reply*) t))
             (on-http-request driver)
             (on-request-data driver data))
           (parse-headers driver server rest)))))
