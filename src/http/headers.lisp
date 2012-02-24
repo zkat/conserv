@@ -74,7 +74,7 @@
                 (t
                  (cl-ppcre:register-groups-bind (name value)
                      (*header-regex* header-line)
-                   (push (cons name value) (request-parser-headers parser)))
+                   (push (cons (intern (string-upcase name) :keyword) value) (request-parser-headers parser)))
                  (feed-parser parser rest)))))
       (values nil parser nil))))
 

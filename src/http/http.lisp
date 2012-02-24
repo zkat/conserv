@@ -126,8 +126,8 @@
            (format socket "HTTP/1.1 ~A" (reply-status reply))
            (write-sequence +crlf+ socket)
            (loop for (name . value) in (reply-headers reply)
-              do (format socket "~A: ~A" name value)
-              (write-sequence +crlf+ socket))
+              do (format socket "~:(~A~): ~A" name value)
+                (write-sequence +crlf+ socket))
            (write-sequence +crlf+ socket)
            (setf (reply-headers-written-p reply) t)))))
 
@@ -175,18 +175,18 @@
     (when rest
       (if donep
           (progn
-            (when (member '("Expect" . "100-continue") (request-headers *request*)
+            (when (member '(:expect . "100-continue") (request-headers *request*)
                           :test #'equalp)
               ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
               (write-sequence +100-continue+ (reply-socket *reply*)))
-            (when (member '("Connection" . "keep-alive") (request-headers *request*)
+            (when (member '(:connection . "keep-alive") (request-headers *request*)
                           :test #'equalp)
               (setf (reply-keep-alive-p *reply*) t))
-            (when (member '("Connection" . "close") (request-headers *request*)
+            (when (member '(:connection . "close") (request-headers *request*)
                           :test #'equalp)
               (setf (reply-keep-alive-p *reply*) nil))
-            (when (member "Upgrade" (request-headers *request*)
-                          :test #'string-equal
+            (when (member :upgrade (request-headers *request*)
+                          :test #'eq
                           :key #'car)
               (on-request-upgrade driver))
             (on-http-request driver)
