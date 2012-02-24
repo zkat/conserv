@@ -92,8 +92,6 @@
   (when (reply-chunked-p reply)
     (format (reply-socket reply) "0~a~a" +crlf+ +crlf+ ))
   (if (reply-keep-alive-p reply)
-      ;; TODO - reuse request/reply objects by reinitializing?
-      ;;        (use shared-initialize with t for slots)
       (new-request (reply-http-server reply)
                    (reply-socket reply))
       (close (reply-socket reply) :abort abort)))
@@ -102,6 +100,13 @@
   (reply-headers *reply*))
 (defun (setf reply-headers*) (new-headers)
   (setf (reply-headers *reply*) new-headers))
+(defun reply-header (header-name &optional (reply *reply*))
+  (cdr (assoc header-name (reply-headers reply) :test 'eq)))
+(defun (setf reply-header) (header-value header-name &optional (reply *reply*))
+  (let ((cons (assoc header-name (reply-headers reply) :test 'eq)))
+    (if cons
+        (setf (cdr cons) header-value)
+        (push (cons header-name header-value) (reply-headers reply)))))
 
 (defun ensure-headers-written (reply)
   (unless (reply-headers-written-p reply)

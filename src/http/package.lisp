@@ -8,6 +8,7 @@
    #:*request*
    #:*reply*
    #:reply-headers*
+   #:reply-header
    ;; HTTP
    #:http-listen
    #:on-http-request

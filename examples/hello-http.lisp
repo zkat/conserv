@@ -5,8 +5,7 @@
 (defclass hello-http () ())
 
 (defmethod on-http-request ((driver hello-http))
-  (setf (reply-headers*) '((:content-type . "text/html")
-                           (:transfer-encoding . "chunked")))
+  (setf (reply-header :content-type) "text/html")
   (format *reply* "<h1>Hello, world!</h1>")
   (close *reply*))
 
