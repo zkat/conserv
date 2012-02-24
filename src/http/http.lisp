@@ -81,7 +81,7 @@
    (socket :reader reply-socket :initarg :socket)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
    (http-server :reader reply-http-server :initarg :http-server)
-   (keep-alive-p :accessor reply-keep-alive-p :initform nil)))
+   (keep-alive-p :accessor reply-keep-alive-p :initform t)))
 
 (defmethod close ((reply reply) &key abort)
   (unless (or (reply-headers-written-p reply) abort)
@@ -89,10 +89,8 @@
   (if (reply-keep-alive-p reply)
       ;; TODO - reuse request/reply objects by reinitializing?
       ;;        (use shared-initialize with t for slots)
-      (progn
-        (write-sequence +crlf+ (reply-socket reply))
-        (new-request (reply-http-server reply)
-                     (reply-socket reply)))
+      (new-request (reply-http-server reply)
+                   (reply-socket reply))
       (close (reply-socket reply) :abort abort)))
 
 (defun reply-headers* ()
@@ -171,7 +169,9 @@
       (setf (request-method *request*) (request-parser-method parser)
             (request-http-version *request*) (request-parser-http-version parser)
             (request-url *request*) (request-parser-url parser)
-            (request-headers *request*) (request-parser-headers parser)))
+            (request-headers *request*) (request-parser-headers parser))
+      (when (string-equal "1.0" (request-http-version *request*))
+        (setf (reply-keep-alive-p *reply*) nil)))
     (when rest
       (if donep
           (progn
@@ -182,6 +182,9 @@
             (when (member '("Connection" . "keep-alive") (request-headers *request*)
                           :test #'equalp)
               (setf (reply-keep-alive-p *reply*) t))
+            (when (member '("Connection" . "close") (request-headers *request*)
+                          :test #'equalp)
+              (setf (reply-keep-alive-p *reply*) nil))
             (when (member "Upgrade" (request-headers *request*)
                           :test #'string-equal
                           :key #'car)
