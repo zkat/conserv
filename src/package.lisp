@@ -37,6 +37,8 @@
    #:socket-paused-p
    #:socket-pause
    #:socket-resume
+   #:socket-bytes-read
+   #:socket-bytes-written
 
    ;; Servers
    #:*server*
