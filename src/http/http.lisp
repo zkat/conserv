@@ -187,7 +187,7 @@
                       socket))
     (write-sequence output socket :start start :end end)
     (when chunkedp
-      (write-sequence +crlf-octets+ (reply-socket reply)))))
+      (write-sequence +crlf-octets+ socket))))
 (defmethod stream-line-column ((reply reply))
   (stream-line-column (reply-socket reply)))
 (defmethod stream-write-char ((reply reply) char)
@@ -201,9 +201,8 @@
   (cond ((reply-headers-written-p reply)
          (warn "Headers already written."))
         (t
-         (write-sequence (babel:string-to-octets
-                          (format nil "HTTP/1.1 ~a~a" (reply-status reply) +crlf-ascii+)
-                          :encoding (reply-external-format reply))
+         (write-sequence (babel:concatenate-strings-to-octets :ascii
+                          "HTTP/1.1 " (princ-to-string (reply-status reply)) +crlf-ascii+)
                          (reply-socket reply))
          (write-sequence (reply-header-bytes reply)
                          (reply-socket reply))

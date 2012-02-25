@@ -123,7 +123,10 @@
 
 ;;; Gray streams implementation
 (defmethod stream-write-sequence ((socket socket) sequence start end &key)
-  (socket-enqueue (subseq sequence (or start 0) (or end (length sequence)))
+  (socket-enqueue (if (and (eq start 0)
+                           (eq end (length sequence)))
+                      sequence
+                      (subseq sequence (or start 0) (or end (length sequence))))
                   socket))
 (defmethod stream-line-column ((socket socket))
   ;; TODO
