@@ -83,8 +83,12 @@
 (defclass reply (trivial-gray-stream-mixin
                  fundamental-binary-output-stream
                  fundamental-character-output-stream)
-  ((headers :accessor reply-headers :initform '((:server . "conserv-http/dev")))
-   (header-bytes :accessor reply-header-bytes)
+  ((headers :accessor reply-headers :initform '((:transfer-encoding . "chunked")))
+   (header-bytes :accessor reply-header-bytes
+                 :initform (babel:concatenate-strings-to-octets
+                            :ascii
+                            (format-header nil :transfer-encoding "chunked")
+                            +crlf-ascii+))
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
