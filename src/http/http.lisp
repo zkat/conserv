@@ -168,19 +168,19 @@
                                           :initial-contents #(13 10)))
 
 (defmethod stream-write-sequence ((reply reply) sequence start end &key)
+  (ensure-headers-written reply)
   (let ((socket (reply-socket reply))
         (chunkedp (reply-chunked-p reply))
         (output (etypecase sequence
                   (string
                    (babel:string-to-octets sequence :encoding (reply-external-format reply)))
-                  (sequence sequence)) ))
-    (ensure-headers-written reply)
+                  (sequence sequence))))
     (when chunkedp
       (write-sequence (babel:string-to-octets
                        (format nil "~x~a" (- (or end (length output)) (or start 0)) +crlf-ascii+)
                        :encoding :ascii)
                       socket))
-    (stream-write-sequence socket output start end)
+    (write-sequence output socket :start start :end end)
     (when chunkedp
       (write-sequence +crlf-octets+ (reply-socket reply)))))
 (defmethod stream-line-column ((reply reply))
@@ -190,12 +190,7 @@
 (defmethod stream-write-byte ((reply reply) byte)
   (write-sequence (make-array 1 :element-type '(unsigned-byte 8) :initial-element byte) reply))
 (defmethod stream-write-string ((reply reply) string &optional start end)
-  (write-sequence (babel:string-to-octets
-                   string
-                   :encoding (reply-external-format reply)
-                   :start start
-                   :end end)
-                  reply))
+  (stream-write-sequence reply string start end))
 
 (defmethod write-headers ((reply reply))
   (cond ((reply-headers-written-p reply)
