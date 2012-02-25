@@ -5,7 +5,8 @@
 (defclass hello-http () ())
 
 (defmethod on-http-request ((driver hello-http))
-  (setf (reply-header :content-type) "text/html")
+  (set-headers *reply*
+               :content-type "text/html")
   (format *reply* "<h1>Hello, world!</h1>")
   (close *reply*))
 

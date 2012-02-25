@@ -7,8 +7,7 @@
    #:*http-server*
    #:*request*
    #:*reply*
-   #:reply-headers*
-   #:reply-header
+   #:set-headers
    ;; HTTP
    #:http-listen
    #:on-http-request

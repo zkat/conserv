@@ -83,8 +83,8 @@
 (defclass reply (trivial-gray-stream-mixin
                  fundamental-binary-output-stream
                  fundamental-character-output-stream)
-  ((headers :accessor reply-headers :initform '((:server . "conserv-http/dev")
-                                                (:transfer-encoding . "chunked")))
+  ((headers :accessor reply-headers :initform '((:server . "conserv-http/dev")))
+   (header-bytes :accessor reply-header-bytes)
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
@@ -109,15 +109,54 @@
 
 (defun reply-headers* ()
   (reply-headers *reply*))
-(defun (setf reply-headers*) (new-headers)
-  (setf (reply-headers *reply*) new-headers))
-(defun reply-header (header-name &optional (reply *reply*))
-  (cdr (assoc header-name (reply-headers reply) :test 'eq)))
-(defun (setf reply-header) (header-value header-name &optional (reply *reply*))
-  (let ((cons (assoc header-name (reply-headers reply) :test 'eq)))
-    (if cons
-        (setf (cdr cons) header-value)
-        (push (cons header-name header-value) (reply-headers reply)))))
+
+(defun set-headers (reply &rest headers &aux (alist (plist-alist headers)))
+  (setf (reply-header-bytes reply) (babel:string-to-octets
+                                      (calculate-header-string alist)
+                                      :encoding :ascii)
+        (reply-headers *reply*) alist))
+(define-compiler-macro set-headers (reply &rest headers &aux (alist (plist-alist headers))
+                                          &environment env)
+  (let ((header-var (gensym "NEW-HEADERS"))
+        (reply-var (gensym "REPLY")))
+    `(let ((,header-var (plist-alist (list ,@headers)))
+           (,reply-var ,reply))
+       ;; TODO - would be nice if we could precompile as many headers as we got literally, and leave
+       ;;        the others for later. Would still minimize amount of work to be done a bit.
+       (setf (reply-header-bytes ,reply-var) ,(if (every (lambda (pair)
+                                                      (and (keywordp (car pair))
+                                                           (constantp (cdr pair) env)))
+                                                    alist)
+                                                  (babel:string-to-octets
+                                                   (calculate-header-string alist)
+                                                   :encoding :ascii)
+                                                  `(babel:string-to-octets
+                                                    (calculate-header-string ,header-var)
+                                                    :encoding :ascii))
+             (reply-headers ,reply-var) ,header-var))))
+
+(defmethod (setf reply-headers) :after (new-headers (reply reply))
+  (when (member :content-length new-headers :key #'car :test #'eq)
+    (setf (reply-chunked-p reply) nil)))
+
+(defun format-header (stream name value)
+  (format stream "~:(~A~): ~A~A" name value +crlf-ascii+))
+
+(defun calculate-header-string (header-alist)
+  (with-output-to-string (s)
+    (loop for (name . value) in header-alist
+       with transfer-encoding-p
+       with content-length-p
+       do (format-header s name value)
+         (when (eq :content-length name)
+           (setf content-length-p t))
+         (when (eq :transfer-encoding name)
+           (setf transfer-encoding-p t))
+       finally (progn
+                 (unless (or transfer-encoding-p
+                             content-length-p)
+                   (format-header s :transfer-encoding "chunked"))
+                 (write-sequence +crlf-ascii+ s)))))
 
 ;;; Reply Gray Streams
 (defun ensure-headers-written (reply)
@@ -162,16 +201,13 @@
   (cond ((reply-headers-written-p reply)
          (warn "Headers already written."))
         (t
-         (let ((socket (reply-socket reply))
-               (headers (with-output-to-string (s)
-                          (format s "HTTP/1.1 ~A~A" (reply-status reply) +crlf-ascii+)
-                          (loop for (name . value) in (reply-headers reply)
-                             do (format s "~:(~A~): ~A~A" name value +crlf-ascii+)
-                             (when (eq :content-length name)
-                               (setf (reply-chunked-p reply) nil))
-                             finally (write-sequence +crlf-ascii+ s)))))
-           (write-sequence (babel:string-to-octets headers :encoding :ascii) socket)
-           (setf (reply-headers-written-p reply) t)))))
+         (write-sequence (babel:string-to-octets
+                          (format nil "HTTP/1.1 ~a~a" (reply-status reply) +crlf-ascii+)
+                          :encoding (reply-external-format reply))
+                         (reply-socket reply))
+         (write-sequence (reply-header-bytes reply)
+                         (reply-socket reply))
+         (setf (reply-headers-written-p reply) t))))
 
 ;;; Server
 (defclass http-server-driver ()
