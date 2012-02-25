@@ -58,6 +58,7 @@
 (defprotocol reply (a)
   ((status ((reply a)) :accessorp t)
    (headers ((reply a)) :accessorp t)
+   (header-bytes ((reply a)) :accessorp t)
    (write-headers ((reply a)))
    (headers-written-p ((reply a)) :accessorp t)
    (keep-alive-p ((reply a)) :accessorp t)
