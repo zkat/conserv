@@ -86,10 +86,10 @@
                  fundamental-character-output-stream)
   ((headers :accessor reply-headers :initform '((:transfer-encoding . "chunked")))
    (header-bytes :accessor reply-header-bytes
-                 :initform (babel:concatenate-strings-to-octets
-                            :ascii
-                            (format-header nil :transfer-encoding "chunked")
-                            +crlf-ascii+))
+                 :initform #.(babel:concatenate-strings-to-octets
+                              :ascii
+                              (format-header nil :transfer-encoding "chunked")
+                              +crlf-ascii+))
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
@@ -112,36 +112,11 @@
                    (reply-socket reply))
       (close (reply-socket reply) :abort abort)))
 
-(defun reply-headers* ()
-  (reply-headers *reply*))
-
-(defun set-headers (reply &rest headers &aux (alist (plist-alist headers)))
-  (setf (reply-header-bytes reply) (babel:string-to-octets
-                                      (calculate-header-string alist)
-                                      :encoding :ascii)
-        (reply-headers *reply*) alist))
-(define-compiler-macro set-headers (reply &rest headers &aux (alist (plist-alist headers))
-                                          &environment env)
-  (let ((header-var (gensym "NEW-HEADERS"))
-        (reply-var (gensym "REPLY")))
-    `(let ((,header-var (plist-alist (list ,@headers)))
-           (,reply-var ,reply))
-       ;; TODO - would be nice if we could precompile as many headers as we got literally, and leave
-       ;;        the others for later. Would still minimize amount of work to be done a bit.
-       (setf (reply-header-bytes ,reply-var) ,(if (every (lambda (pair)
-                                                      (and (keywordp (car pair))
-                                                           (constantp (cdr pair) env)))
-                                                    alist)
-                                                  (babel:string-to-octets
-                                                   (calculate-header-string alist)
-                                                   :encoding :ascii)
-                                                  `(babel:string-to-octets
-                                                    (calculate-header-string ,header-var)
-                                                    :encoding :ascii))
-             (reply-headers ,reply-var) ,header-var))))
-
+;;;
+;;; Headers
+;;;
 (defmethod (setf reply-headers) :after (new-headers (reply reply))
-  (when (member :content-length new-headers :key #'car :test #'eq)
+  (when (member :content-length new-headers :key #'car :test #'string-equal)
     (setf (reply-chunked-p reply) nil)))
 
 (defun format-header (stream name value)
@@ -162,6 +137,70 @@
                              content-length-p)
                    (format-header s :transfer-encoding "chunked"))
                  (write-sequence +crlf-ascii+ s)))))
+
+;; NOTE - the reason this isn't just (setf reply-headers) is because some implementations expand
+;;        setf functions into something like (let ((val ,value)) (funcall #'(setf foo) val)), which
+;;        will always pass 'val as the literal argument to the compiler macro. :(
+(defun set-headers (reply &rest headers &aux (alist (plist-alist headers)))
+  (setf (reply-header-bytes reply) (babel:string-to-octets
+                                      (calculate-header-string alist)
+                                      :encoding :ascii)
+        (reply-headers reply) alist))
+
+#+nil
+(defun add-headers (reply &rest headers &aux (alist (plist-alist headers)))
+  ;; TODO - in order for this to work, we can't append the final crlf in
+  ;;        calculate-header-string. The logic behind automatically inserting :transfer-encoding
+  ;;        needs to be changed, too.
+  (setf (reply-header-bytes reply) (concatenate '(vector (unsigned-byte 8))
+                                                (reply-header-bytes reply)
+                                                (babel:string-to-octets
+                                                 (calculate-header-string alist)
+                                                 :encoding :ascii)))
+  (appendf (reply-headers reply) alist))
+
+;;; Optimization
+(defun process-literal-headers (headers env)
+  (loop
+     for (name value) on headers by #'cddr
+     if (and (or (symbolp name) (stringp  name))
+             (constantp value env))
+     collect (format-header nil name value) into compiled
+     and collect name into literal and collect value into literal
+     else
+     collect name into dynamic and collect value into dynamic
+     finally (return (values (when compiled
+                               (apply #'babel:concatenate-strings-to-octets :ascii compiled))
+                             literal
+                             dynamic))))
+
+(define-compiler-macro set-headers (reply &rest headers &environment env)
+  (multiple-value-bind (compiled literal dynamic)
+      (process-literal-headers headers env)
+    (let ((dynamics-var (gensym "DYNAMIC-HEADERS"))
+          (literals-var (gensym "LITERAL-HEADERS"))
+          (reply-var (gensym "REPLY")))
+      `(let ((,dynamics-var (plist-alist (list ,@dynamic)))
+             (,literals-var (plist-alist (list ,@literal)))
+             (,reply-var ,reply))
+         (setf (reply-header-bytes ,reply-var) ,(cond ((and literal dynamic)
+                                                       `(concatenate '(vector (unsigned-byte 8))
+                                                                     ,compiled
+                                                                     (babel:string-to-octets
+                                                                      (calculate-header-string ,dynamics-var)
+                                                                      :encoding :ascii)))
+                                                      (compiled
+                                                       (concatenate '(vector (unsigned-byte 8))
+                                                                    compiled
+                                                                    (babel:string-to-octets
+                                                                     (calculate-header-string nil)
+                                                                     :encoding :ascii)))
+                                                      (dynamic `(babel:string-to-octets
+                                                                 (calculate-header-string ,dynamics-var)
+                                                                 :encoding :ascii)))
+               ;; NOTE - nconc is *probably* okay here. literals and dynamics have already been
+               ;;        used above...
+               (reply-headers ,reply-var) (nconc ,literals-var ,dynamics-var))))))
 
 ;;; Reply Gray Streams
 (defun ensure-headers-written (reply)
@@ -197,16 +236,21 @@
 (defmethod stream-write-string ((reply reply) string &optional start end)
   (stream-write-sequence reply string start end))
 
+(defparameter +http-1.1+ (babel:string-to-octets "HTTP/1.1 " :encoding :ascii))
+
 (defmethod write-headers ((reply reply))
   (cond ((reply-headers-written-p reply)
          (warn "Headers already written."))
         (t
-         (write-sequence (babel:concatenate-strings-to-octets :ascii
-                          "HTTP/1.1 " (princ-to-string (reply-status reply)) +crlf-ascii+)
-                         (reply-socket reply))
-         (write-sequence (reply-header-bytes reply)
-                         (reply-socket reply))
-         (setf (reply-headers-written-p reply) t))))
+         (let ((socket (reply-socket reply)))
+           (write-sequence +http-1.1+ socket)
+           (write-sequence (babel:string-to-octets (princ-to-string (reply-status reply))
+                                                   :encoding :ascii)
+                           socket)
+           (write-sequence +crlf-octets+ socket)
+           (write-sequence (reply-header-bytes reply)
+                           (reply-socket reply))
+           (setf (reply-headers-written-p reply) t)))))
 
 ;;; Server
 (defclass http-server-driver ()
