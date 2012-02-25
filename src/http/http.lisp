@@ -81,6 +81,11 @@
 (defmethod close ((req request) &key abort)
   (close (request-socket req) :abort abort))
 
+;; TODO - the reply implementation needs to go below all the header parsing later anyway.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun format-header (stream name value)
+    (format stream "~:(~A~): ~A~A" name value +crlf-ascii+)))
+
 (defclass reply (trivial-gray-stream-mixin
                  fundamental-binary-output-stream
                  fundamental-character-output-stream)
@@ -118,9 +123,6 @@
 (defmethod (setf reply-headers) :after (new-headers (reply reply))
   (when (member :content-length new-headers :key #'car :test #'string-equal)
     (setf (reply-chunked-p reply) nil)))
-
-(defun format-header (stream name value)
-  (format stream "~:(~A~): ~A~A" name value +crlf-ascii+))
 
 (defun calculate-header-string (header-alist)
   (with-output-to-string (s)
