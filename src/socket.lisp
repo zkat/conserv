@@ -63,17 +63,12 @@
    (bytes-written ((socket a))
     :accessorp t)
    (external-format-in ((socket a))
-    :documentation "External format to use when converting incoming octets into characters.")
+    :documentation "External format to use when converting incoming octets into characters. If NIL,
+                    no encoding will be done on incoming data, and ON-SOCKET-DATA will receive the
+                    raw (unsigned-byte 8) data.")
    (external-format-out ((socket a))
-    :documentation "External format to use for outgoing octets and strings.")
-   (binary-p ((socket a))
-    :accessorp t
-    :documentation "If true, incoming data will not be converted to strings. ON-SOCKET-DATA will
-                    instead return the raw (UNSIGNED-BYTE 8) arrays. In this mode,
-                    SOCKET-EXTERNAL-FORMAT-OUT will only be used when converting input strings for
-                    output -- binary input data (as through WRITE-SEQUENCE) will not be
-                    converted. SOCKET-EXTERNAL-FORMAT-IN is not used at all in binary mode.
-                    This value can be changed after a socket has already been created.")
+    :documentation "External format to use for outgoing octets and strings. If NIL, an error is
+                    signaled if an attempt is made to write a string to the socket.")
    (close-after-drain-p ((socket a))
     :accessorp t
     :documentation "When true, the internal socket will be closed once the socket's output buffer is
@@ -103,20 +98,17 @@
    (bytes-written :initform 0 :accessor socket-bytes-written)
    (external-format-in :initarg :external-format-in :reader socket-external-format-in)
    (external-format-out :initarg :external-format-out :reader socket-external-format-out)
-   (binary-p :initarg :binaryp :accessor socket-binary-p)
    (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)
    (readingp :initform nil :accessor socket-reading-p)
    (writingp :initform nil :accessor socket-writing-p)))
 (defun make-socket (driver &key
                     (buffer-size *max-buffer-size*)
                     (external-format-in *default-external-format*)
-                    (external-format-out *default-external-format*)
-                    binaryp)
+                    (external-format-out *default-external-format*))
   (let ((socket (make-instance 'socket
                                :driver driver
                                :external-format-in external-format-in
-                               :external-format-out external-format-out
-                               :binaryp binaryp)))
+                               :external-format-out external-format-out)))
     (setf (slot-value socket 'read-buffer) (make-array buffer-size :element-type 'octet))
     socket))
 
@@ -170,13 +162,11 @@
                        (wait t)
                        (buffer-size *max-buffer-size*)
                        (external-format-in *default-external-format*)
-                       (external-format-out *default-external-format*)
-                       binaryp)
+                       (external-format-out *default-external-format*))
   (let ((socket (make-socket driver
                              :buffer-size buffer-size
                              :external-format-in external-format-in
-                             :external-format-out external-format-out
-                             :binaryp binaryp))
+                             :external-format-out external-format-out))
         (internal-socket (iolib:make-socket :connect :active
                                             :address-family (if (pathnamep host)
                                                                 :local
@@ -248,12 +238,12 @@
                                           (when (zerop bytes-read)
                                             (error 'end-of-file))
                                           (incf (socket-bytes-read socket) bytes-read)
-                                          (let ((data (if (socket-binary-p socket)
-                                                          (subseq buffer 0 bytes-read)
-                                                          (babel:octets-to-string buffer
-                                                                                 :start 0
-                                                                                 :end bytes-read
-                                                                                 :encoding (socket-external-format-in socket)))))
+                                          (let ((data (if-let (format (socket-external-format-in socket))
+                                                        (babel:octets-to-string buffer
+                                                                                :start 0
+                                                                                :end bytes-read
+                                                                                :encoding format)
+                                                        (subseq buffer 0 bytes-read))))
                                             (let ((*socket* socket))
                                               (on-socket-data (socket-driver socket) data))))
                                       (continue () nil)
@@ -267,7 +257,9 @@
     ((simple-array octet)
      content)
     (string
-     (babel:string-to-octets content :encoding (socket-external-format-out socket)))
+     (if-let (format (socket-external-format-out socket))
+       (babel:string-to-octets content :encoding format)
+       (error "Cannot write strings to socket ~A. SOCKET-EXTERNAL-FORMAT-OUT is NIL." socket)))
     ((or (array octet) (cons octet))
      (map-into (make-array (length content) :element-type 'octet)
                content))))

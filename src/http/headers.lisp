@@ -78,12 +78,12 @@
                  (feed-parser parser rest)))))
       (values nil parser nil))))
 
-(defparameter +crlf+ #.(make-array 2 :element-type 'character :initial-contents '(#\return #\linefeed)))
+(defparameter +crlf-ascii+ #.(make-array 2 :element-type 'character :initial-contents '(#\return #\linefeed)))
 (defun test ()
   (let ((request-chunk (concatenate 'string
-                                    "200 / HTTP/1.1" +crlf+
-                                    "Foo: bar" +crlf+
-                                    " baz" +crlf+
-                                    "Quux: Hurr" +crlf+
-                                    +crlf+)))
+                                    "200 / HTTP/1.1" +crlf-ascii+
+                                    "Foo: bar" +crlf-ascii+
+                                    " baz" +crlf-ascii+
+                                    "Quux: Hurr" +crlf-ascii+
+                                    +crlf-ascii+)))
     (feed-parser (make-request-parser) request-chunk)))

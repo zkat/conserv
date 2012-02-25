@@ -21,7 +21,11 @@
 (defprotocol http-server (a)
   ((driver ((server a))
     :accessorp t)
-   (connections ((server a))))
+   (connections ((server a)))
+   (external-format-in ((server a))
+    :accessorp t)
+   (external-format-out ((server a))
+    :accessorp t))
   (:prefix http-server-))
 
 (defprotocol request-event-driver (a)
@@ -59,7 +63,9 @@
    (keep-alive-p ((reply a)) :accessorp t)
    (chunked-p ((reply a)) :accessorp t)
    (http-server ((reply a)))
-   (socket ((reply a))))
+   (external-format ((request a)) :accessorp t)
+   (socket ((reply a)))
+   #+nil(trailers ((reply a)) :accessorp t))
   (:prefix reply-))
 
 (defclass request ()
@@ -84,13 +90,18 @@
    (headers-written-p :accessor reply-headers-written-p :initform nil)
    (http-server :reader reply-http-server :initarg :http-server)
    (keep-alive-p :accessor reply-keep-alive-p :initform t)
-   (chunkedp :accessor reply-chunked-p :initform t)))
+   (chunkedp :accessor reply-chunked-p :initform t)
+   (external-format :accessor reply-external-format :initarg :external-format)))
+
+(defparameter +0crlfcrlf+ #.(make-array 5
+                                        :element-type '(unsigned-byte 8)
+                                        :initial-contents #(48 13 10 13 10)))
 
 (defmethod close ((reply reply) &key abort)
   (unless (or (reply-headers-written-p reply) abort)
     (write-headers reply))
   (when (reply-chunked-p reply)
-    (format (reply-socket reply) "0~a~a" +crlf+ +crlf+ ))
+    (write-sequence +0crlfcrlf+ (reply-socket reply)))
   (if (reply-keep-alive-p reply)
       (new-request (reply-http-server reply)
                    (reply-socket reply))
@@ -108,69 +119,75 @@
         (setf (cdr cons) header-value)
         (push (cons header-name header-value) (reply-headers reply)))))
 
+;;; Reply Gray Streams
 (defun ensure-headers-written (reply)
   (unless (reply-headers-written-p reply)
     (write-headers reply)))
 
+(defparameter +crlf-octets+ #.(make-array 2
+                                          :element-type '(unsigned-byte 8)
+                                          :initial-contents #(13 10)))
+
 (defmethod stream-write-sequence ((reply reply) sequence start end &key)
-  (ensure-headers-written reply)
-  (when (reply-chunked-p reply)
-    (format (reply-socket reply) "~x~a" (- (or end (length sequence)) (or start 0)) +crlf+))
-  (stream-write-sequence (reply-socket reply) sequence start end)
-  (when (reply-chunked-p reply)
-    (write-sequence +crlf+ (reply-socket reply))) )
+  (let ((socket (reply-socket reply))
+        (chunkedp (reply-chunked-p reply))
+        (output (etypecase sequence
+                  (string
+                   (babel:string-to-octets sequence :encoding (reply-external-format reply)))
+                  (sequence sequence)) ))
+    (ensure-headers-written reply)
+    (when chunkedp
+      (write-sequence (babel:string-to-octets
+                       (format nil "~x~a" (- (or end (length output)) (or start 0)) +crlf-ascii+)
+                       :encoding :ascii)
+                      socket))
+    (stream-write-sequence socket output start end)
+    (when chunkedp
+      (write-sequence +crlf-octets+ (reply-socket reply)))))
 (defmethod stream-line-column ((reply reply))
-  (ensure-headers-written reply)
   (stream-line-column (reply-socket reply)))
 (defmethod stream-write-char ((reply reply) char)
-  (ensure-headers-written reply)
-  (when (reply-chunked-p reply)
-    (format (reply-socket reply) "1~a" +crlf+))
-  (stream-write-char (reply-socket reply) char)
-  (when (reply-chunked-p reply)
-    (write-sequence +crlf+ (reply-socket reply))))
+  (write-sequence (string char) reply))
 (defmethod stream-write-byte ((reply reply) byte)
-  (ensure-headers-written reply)
-  (when (reply-chunked-p reply)
-    (format (reply-socket reply) "1~a" +crlf+))
-  (stream-write-byte (reply-socket reply) byte)
-  (when (reply-chunked-p reply)
-    (write-sequence +crlf+ (reply-socket reply))))
+  (write-sequence (make-array 1 :element-type '(unsigned-byte 8) :initial-element byte) reply))
 (defmethod stream-write-string ((reply reply) string &optional start end)
-  (ensure-headers-written reply)
-  (when (reply-chunked-p reply)
-    (format (reply-socket reply) "~x~a" (- (or end (length string)) (or start 0)) +crlf+))
-  (stream-write-string (reply-socket reply) string start end)
-  (when (reply-chunked-p reply)
-    (write-sequence +crlf+ (reply-socket reply))))
+  (write-sequence (babel:string-to-octets
+                   string
+                   :encoding (reply-external-format reply)
+                   :start start
+                   :end end)
+                  reply))
 
 (defmethod write-headers ((reply reply))
   (cond ((reply-headers-written-p reply)
          (warn "Headers already written."))
         (t
-         (let ((socket (reply-socket reply)))
-           (format socket "HTTP/1.1 ~A" (reply-status reply))
-           (write-sequence +crlf+ socket)
-           (loop for (name . value) in (reply-headers reply)
-              do (format socket "~:(~A~): ~A" name value)
-                (write-sequence +crlf+ socket)
-                (when (eq :content-length name)
-                  (setf (reply-chunked-p reply) nil)))
-           (write-sequence +crlf+ socket)
+         (let ((socket (reply-socket reply))
+               (headers (with-output-to-string (s)
+                          (format s "HTTP/1.1 ~A~A" (reply-status reply) +crlf-ascii+)
+                          (loop for (name . value) in (reply-headers reply)
+                             do (format s "~:(~A~): ~A~A" name value +crlf-ascii+)
+                             (when (eq :content-length name)
+                               (setf (reply-chunked-p reply) nil))
+                             finally (write-sequence +crlf-ascii+ s)))))
+           (write-sequence (babel:string-to-octets headers :encoding :ascii) socket)
            (setf (reply-headers-written-p reply) t)))))
 
 ;;; Server
 (defclass http-server-driver ()
   ((driver :initarg :driver :accessor http-server-driver)
+   (external-format-in :initarg :external-format-in :accessor http-server-external-format-in)
+   (external-format-out :initarg :external-format-out :accessor http-server-external-format-out)
    (connections :initform (make-hash-table) :accessor http-server-connections)))
 
 (defun new-request (driver socket)
   (setf (gethash socket (http-server-connections driver))
         (cons (make-instance 'request
                              :socket socket
-                             :external-format :utf-8 #+nil(server-external-format-in *server*))
+                             :external-format (http-server-external-format-in driver))
               (make-instance 'reply
                              :socket socket
+                             :external-format (http-server-external-format-out driver)
                              :http-server driver))))
 
 (defmethod on-server-connection ((driver http-server-driver) socket)
@@ -186,13 +203,15 @@
           (*reply* rep)
           (*http-server* driver))
       (if (request-method req)
-          (on-request-data user-driver data)
+          (on-request-data user-driver (if-let (format (request-external-format req))
+                                         (babel:octets-to-string data :encoding format)
+                                         data))
           (parse-headers user-driver (socket-server socket) data)))))
 
-(defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf+ +crlf+)))
+(defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf-ascii+ +crlf-ascii+)))
 (defun parse-headers (driver server data)
   (multiple-value-bind (donep parser rest)
-      (feed-parser (request-request-parser *request*) data)
+      (feed-parser (request-request-parser *request*) (babel:octets-to-string data :encoding :ascii))
     (when donep
       (setf (request-method *request*) (request-parser-method parser)
             (request-http-version *request*) (request-parser-http-version parser)
@@ -218,7 +237,10 @@
                           :key #'car)
               (on-request-upgrade driver))
             (on-http-request driver)
-            (on-request-data driver data))
+            (on-request-data driver (let ((rest-octets (babel:string-to-octets rest :encoding :ascii)))
+                                      (if-let (format (request-external-format *request*))
+                                        (babel:octets-to-string rest-octets :encoding format)
+                                        rest-octets))))
           (parse-headers driver server rest)))))
 
 (defmethod on-socket-close ((driver http-server-driver))
@@ -228,11 +250,12 @@
                     (host iolib:+ipv4-unspecified+)
                     (port 8080)
                     (external-format-in *default-external-format*)
-                    (external-format-out *default-external-format*)
-                    binaryp)
-  (server-listen (make-instance 'http-server-driver :driver driver)
+                    (external-format-out *default-external-format*))
+  (server-listen (make-instance 'http-server-driver
+                                :driver driver
+                                :external-format-in external-format-in
+                                :external-format-out external-format-out)
                  :host host
                  :port port
-                 :external-format-in external-format-in
-                 :external-format-out external-format-out
-                 :binaryp binaryp))
+                 :external-format-in nil
+                 :external-format-out nil))

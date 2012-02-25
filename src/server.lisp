@@ -23,7 +23,6 @@
   ((external-format-in ((server a)))
    (external-format-out ((server a)))
    (driver ((server a)))
-   (binary-p ((server a)) :accessorp t)
    (socket ((server a)) :accessorp t
     :documentation "The conserv socket associated with this server.")
    (client-driver ((server a))
@@ -34,13 +33,11 @@
    (client-driver :initarg :client-driver :reader server-client-driver)
    (external-format-in :initarg :external-format-in :reader server-external-format-in)
    (external-format-out :initarg :external-format-out :reader server-external-format-out)
-   (binaryp :initarg :binaryp :reader server-binary-p)
    (connections :accessor server-connections :initform (make-hash-table))
    (socket :initarg :socket :accessor server-socket)))
 
 (defun make-server (driver
                     &key
-                    binaryp
                     (external-format-in *default-external-format*)
                     (external-format-out *default-external-format*)
                     (client-driver driver))
@@ -48,7 +45,6 @@
                  :driver driver
                  :external-format-in external-format-in
                  :external-format-out external-format-out
-                 :binaryp binaryp
                  :client-driver client-driver))
 
 (defun server-list-clients (server)
@@ -86,8 +82,7 @@
                                                             (server-socket server))))
              (let ((socket (make-socket (server-client-driver server)
                                         :external-format-in (server-external-format-in server)
-                                        :external-format-out (server-external-format-out server)
-                                        :binaryp (server-binary-p server))))
+                                        :external-format-out (server-external-format-out server))))
                (setf (gethash socket (server-connections server)) socket
                      (socket-internal-socket socket) client-sock
                      (socket-server socket) server)
@@ -101,10 +96,8 @@
                       (port (unless (pathnamep host) 1337))
                       (external-format-in *default-external-format*)
                       (external-format-out *default-external-format*)
-                      binaryp
                       (client-driver driver))
   (let* ((server (make-server driver
-                              :binaryp binaryp
                               :external-format-in external-format-in
                               :external-format-out external-format-out
                               :client-driver client-driver))
