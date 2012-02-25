@@ -7,7 +7,7 @@
 (defvar *socket*)
 (defprotocol socket-event-driver (a)
   ((error (driver error)
-    :default-form #+nil(drop-connection error) nil
+    :default-form nil
     :documentation "Event called when *SOCKET* has experienced some error. ERROR is the actual
                     condition. This event is executed immediately before the client is shut down.
                     By default, this event simply drops the client connection.
@@ -15,11 +15,14 @@
                     The fact that ON-SOCKET-ERROR receives the actual condition allows a sort of
                     condition handling by specializing both the driver and the condition. For
                     example:
-                    (defmethod on-socket-error ((driver my-driver) socket (error end-of-file))
-                      (format t \"~&Got an end of file.~%\")
-                      (drop-connection error))
-                    (defmethod on-socket-error ((driver my-driver) socket (error blood-and-guts))
-                      (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
+                    (defmethod on-socket-error ((driver my-driver) (error something-harmless))
+                      (format t \"~&Nothing to see here.~%\"))
+
+                    (defmethod on-socket-error ((driver my-driver) (error blood-and-guts))
+                      (format t \"~&Oh, the humanity!~%\")
+                      (drop-connection error))")
+   (end-of-file (driver)
+    :default-form nil)
    (connect ((driver a))
     :default-form nil
     :documentation "Event called immediately after a successful SOCKET-CONNECT.")
@@ -228,9 +231,11 @@
                           :read (lambda (&rest ig)
                                   (declare (ignore ig))
                                   ;; NOTE - The redundant errors are there for reference.
-                                  (handler-bind (((or iolib:socket-connection-reset-error
-                                                      end-of-file
-                                                      error)
+                                  (handler-bind ((end-of-file (lambda (e &aux (*socket* socket))
+                                                                (on-socket-end-of-file
+                                                                 (socket-driver socket))
+                                                                (drop-connection e)))
+                                                 (error
                                                   (lambda (e &aux (*socket* socket))
                                                     (on-socket-error (socket-driver socket) e))))
                                     (restart-case
@@ -239,7 +244,7 @@
                                                 (nth-value
                                                  1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
                                           (when (zerop bytes-read)
-                                            (error 'end-of-file))
+                                            (error 'end-of-file :stream socket))
                                           (incf (socket-bytes-read socket) bytes-read)
                                           (let ((data (if-let (format (socket-external-format-in socket))
                                                         (babel:octets-to-string buffer
