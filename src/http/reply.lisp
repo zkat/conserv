@@ -4,20 +4,43 @@
 
 (defprotocol reply-event-driver (a)
   ((close ((driver a))
-    :default-form nil))
+    :default-form nil
+    :documentation "Event called when *REPLY* has been closed."))
   (:prefix on-reply-))
 
 (defprotocol reply (a)
-  ((status ((reply a)) :accessorp t)
-   (headers ((reply a)) :accessorp t)
-   (header-bytes ((reply a)) :accessorp t)
-   (write-headers ((reply a)))
-   (headers-written-p ((reply a)) :accessorp t)
-   (chunked-p ((reply a)) :accessorp t)
-   (http-server ((reply a)))
-   (external-format ((reply a)) :accessorp t)
-   (request ((reply a)))
-   (socket ((reply a)))
+  ((status ((reply a))
+    :accessorp t
+    :documentation "HTTP status code for this reply. Can be either a simple integer, such as 404, or
+                    a cons of (code . message-string), such as (404 . \"Not Found\"). If no
+                    message is present, only the code is sent to clients. Returns (200 . \"OK\") by
+                    default.")
+   (headers ((reply a))
+    :accessorp t
+    :documentation "An alist containing the outgoing headers. Header names can either be strings
+                    or :keywords. Values can be any printable lisp value.")
+   (header-bytes ((reply a))
+    :accessorp t
+    :documentation "Internal -- ASCII-encoded bytes representing the outgoing headers.")
+   (headers-written-p ((reply a))
+    :accessorp t
+    :documentation "Returns true when the outgoing headers have been written to the client.")
+   (chunked-p ((reply a))
+    :accessorp t
+    :documentation "Internal -- whether the request's body output should be chunk-encoded. Do not
+                    set this directly. By default, all replies use chunked encoding unless the
+                    Content-length header is provided.")
+   (http-server ((reply a))
+    :documentation "The server associated with this reply.")
+   (external-format ((reply a))
+    :accessorp t
+    :documentation "The external format used to encode outgoing strings. If NIL, attempting to write
+                    a string or character to the reply will signal an error, only (unsigned-byte 8)
+                    will be allowed.")
+   (request ((reply a))
+    :documentation "The request this reply is paired with.")
+   (socket ((reply a))
+    :documentation "The underlying TCP socket object this reply will write to.")
    #+nil(trailers ((reply a)) :accessorp t))
   (:prefix reply-))
 
