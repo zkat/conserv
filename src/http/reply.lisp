@@ -75,7 +75,12 @@
         (t
          (let ((socket (reply-socket reply)))
            (write-sequence +http-1.1+ socket)
-           (write-sequence (babel:string-to-octets (princ-to-string (reply-status reply))
+           (write-sequence (babel:string-to-octets (let ((status (reply-status reply)))
+                                                     (etypecase status
+                                                       (integer (princ-to-string status))
+                                                       (cons (format nil "~A ~A"
+                                                                     (car status)
+                                                                     (cdr status)))))
                                                    :encoding :ascii)
                            socket)
            (write-sequence +crlf-octets+ socket)
@@ -140,7 +145,7 @@
                  :initform #.(babel:concatenate-strings-to-octets
                               :ascii "Transfer-Encoding: chunked"
                               +crlf-ascii+))
-   (status :accessor reply-status :initform 200)
+   (status :accessor reply-status :initform '(200 . "OK"))
    (socket :reader reply-socket :initarg :socket)
    (request :reader reply-request :initarg :request)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
