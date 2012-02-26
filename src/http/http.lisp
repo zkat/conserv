@@ -48,6 +48,7 @@
    (http-version ((request a)) :accessorp t)
    (external-format ((request a)) :accessorp t)
    (request-parser ((request a)))
+   (http-server ((reply a)))
    (keep-alive-p ((reply a)) :accessorp t)
    (socket ((request a))))
   (:prefix request-))
@@ -78,14 +79,16 @@
    (http-version :accessor request-http-version)
    (external-format :initarg :external-format :accessor request-external-format)
    (request-parser :initform (make-request-parser) :reader request-request-parser)
+   (http-server :reader request-http-server :initarg :http-server)
    (keep-alive-p :accessor request-keep-alive-p :initform t)
    (state :accessor request-state :initform :headers)
    (socket :initarg :socket :reader request-socket)))
 
-(defmethod close ((req request) &key abort)
+(defmethod close ((req request) &key abort &aux (socket (request-socket req)))
   (setf (request-state req) :closed)
-  (when abort
-    (setf (request-keep-alive-p req) nil)))
+  (if (request-keep-alive-p *request*)
+      (new-request (request-http-server req) socket)
+      (close socket :abort abort)))
 
 ;; TODO - the reply implementation needs to go below all the header parsing later anyway.
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -270,6 +273,7 @@
   (setf (gethash socket (http-server-connections driver))
         (let ((req (make-instance 'request
                                   :socket socket
+                                  :http-server driver
                                   :external-format (http-server-external-format-in driver))))
           (cons req
                 (make-instance 'reply
@@ -296,11 +300,7 @@
         (:body
          (on-request-data user-driver (if-let (format (request-external-format req))
                                          (babel:octets-to-string data :encoding format)
-                                         data)))
-        (:closed
-         (if (request-keep-alive-p *request*)
-             (new-request driver socket)
-             (close socket)))))))
+                                         data)))))))
 
 (defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf-ascii+ +crlf-ascii+)))
 (defun parse-headers (server driver data)
@@ -320,9 +320,7 @@
                           :test #'string-equal
                           :key #'car)
                   (string-equal "CONNECT" (request-method *request*)))
-                 (close *request*)
-                 (unregister-http-socket server *socket*)
-                 (on-request-upgrade driver (babel:string-to-octets rest :encoding :ascii)))
+                 (upgrade-request *request* *socket* server driver rest))
                 (t
                  (when (member '(:expect . "100-continue") (request-headers *request*)
                                :test #'equalp)
@@ -342,6 +340,16 @@
                                       (babel:octets-to-string rest-octets :encoding format)
                                       rest-octets)))))
           (parse-headers server driver rest)))))
+
+(defun upgrade-request (request socket server driver rest)
+  ;; HACK - This is terrible. Because CLOSE will close the underlying socket if request-keep-alive-p
+  ;;        is NIL, we force it to true before the close, so all the cleanup that needs to be done
+  ;;        gets done, but we still have the open socket..
+  (setf (request-keep-alive-p request) t)
+  (close request)
+  (unregister-http-socket server socket)
+  (setf (socket-driver socket) nil)
+  (on-request-upgrade driver (babel:string-to-octets rest :encoding :ascii)))
 
 (defun unregister-http-socket (driver socket)
   (remhash socket (http-server-connections driver)))
