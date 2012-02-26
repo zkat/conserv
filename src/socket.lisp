@@ -125,11 +125,14 @@
     (start-writes socket)))
 
 ;;; Gray streams implementation
-(defmethod stream-write-sequence ((socket socket) sequence start end &key)
-  (socket-enqueue (if (and (eq start 0)
-                           (eq end (length sequence)))
+(defmethod stream-write-sequence ((socket socket) sequence start end &key
+                                  &aux (length (length sequence)))
+  (socket-enqueue (if (and (or (null start)
+                               (eq start 0))
+                           (or (null end)
+                               (eq end length)))
                       sequence
-                      (subseq sequence (or start 0) (or end (length sequence))))
+                      (subseq sequence (or start 0) (or end length)))
                   socket))
 (defmethod stream-line-column ((socket socket))
   ;; TODO
@@ -230,7 +233,6 @@
                           (iolib:socket-os-fd (socket-internal-socket socket))
                           :read (lambda (&rest ig)
                                   (declare (ignore ig))
-                                  ;; NOTE - The redundant errors are there for reference.
                                   (handler-bind ((end-of-file (lambda (e &aux (*socket* socket))
                                                                 (on-socket-end-of-file
                                                                  (socket-driver socket))
