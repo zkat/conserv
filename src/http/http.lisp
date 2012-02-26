@@ -34,7 +34,7 @@
    (continue ((driver a))
     :default-form nil)
    (upgrade ((driver a) data)
-    :default-form (close *request*))
+    :default-form (close *request* :abort t))
    (close ((driver a))
     :default-form nil))
   (:prefix on-request-))
@@ -86,7 +86,7 @@
 
 (defmethod close ((req request) &key abort &aux (socket (request-socket req)))
   (setf (request-state req) :closed)
-  (if (request-keep-alive-p *request*)
+  (if (and (request-keep-alive-p *request*) (not abort))
       (new-request (request-http-server req) socket)
       (close socket :abort abort)))
 
