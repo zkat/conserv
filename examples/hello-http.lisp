@@ -5,10 +5,6 @@
 (defclass hello-http () ())
 
 (defmethod on-http-request ((driver hello-http))
-  #+nil(let ((content-length (babel:string-size-in-octets "<h1>Hello, world!</h1>" :encoding :utf-8)))
-    (set-headers *reply*
-                 :content-type "text/html"
-                 :content-length content-length))
   (set-headers *reply* :content-type "text/html")
   (format *reply* "<h1>Hello, world!</h1>")
   (close *reply*))
