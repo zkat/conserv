@@ -33,20 +33,22 @@
     :default-form nil)
    (continue ((driver a))
     :default-form nil)
-   (upgrade ((driver a))
-    :default-form (close *request* :abort t))
+   (upgrade ((driver a) data)
+    :default-form (close *request*))
    (close ((driver a))
     :default-form nil))
   (:prefix on-request-))
 
 (defprotocol request (a)
-  ((method ((request a)) :accessorp t)
+  ((state ((request a)) :accessorp t)
+   (method ((request a)) :accessorp t)
    (url ((request a)) :accessorp t)
    (headers ((request a)) :accessorp t)
    #+nil(trailers ((request a)))
    (http-version ((request a)) :accessorp t)
    (external-format ((request a)) :accessorp t)
    (request-parser ((request a)))
+   (keep-alive-p ((reply a)) :accessorp t)
    (socket ((request a))))
   (:prefix request-))
 
@@ -61,10 +63,10 @@
    (header-bytes ((reply a)) :accessorp t)
    (write-headers ((reply a)))
    (headers-written-p ((reply a)) :accessorp t)
-   (keep-alive-p ((reply a)) :accessorp t)
    (chunked-p ((reply a)) :accessorp t)
    (http-server ((reply a)))
-   (external-format ((request a)) :accessorp t)
+   (external-format ((reply a)) :accessorp t)
+   (request ((reply a)))
    (socket ((reply a)))
    #+nil(trailers ((reply a)) :accessorp t))
   (:prefix reply-))
@@ -76,10 +78,14 @@
    (http-version :accessor request-http-version)
    (external-format :initarg :external-format :accessor request-external-format)
    (request-parser :initform (make-request-parser) :reader request-request-parser)
+   (keep-alive-p :accessor request-keep-alive-p :initform t)
+   (state :accessor request-state :initform :headers)
    (socket :initarg :socket :reader request-socket)))
 
 (defmethod close ((req request) &key abort)
-  (close (request-socket req) :abort abort))
+  (setf (request-state req) :closed)
+  (when abort
+    (setf (request-keep-alive-p req) nil)))
 
 ;; TODO - the reply implementation needs to go below all the header parsing later anyway.
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -97,9 +103,9 @@
                               +crlf-ascii+))
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
+   (request :reader reply-request :initarg :request)
    (headers-written-p :accessor reply-headers-written-p :initform nil)
    (http-server :reader reply-http-server :initarg :http-server)
-   (keep-alive-p :accessor reply-keep-alive-p :initform t)
    (chunkedp :accessor reply-chunked-p :initform t)
    (external-format :accessor reply-external-format :initarg :external-format)))
 
@@ -112,10 +118,7 @@
     (write-headers reply))
   (when (reply-chunked-p reply)
     (write-sequence +0crlfcrlf+ (reply-socket reply)))
-  (if (reply-keep-alive-p reply)
-      (new-request (reply-http-server reply)
-                   (reply-socket reply))
-      (close (reply-socket reply) :abort abort)))
+  (close (reply-request reply) :abort abort))
 
 ;;;
 ;;; Headers
@@ -265,13 +268,15 @@
 
 (defun new-request (driver socket)
   (setf (gethash socket (http-server-connections driver))
-        (cons (make-instance 'request
-                             :socket socket
-                             :external-format (http-server-external-format-in driver))
-              (make-instance 'reply
-                             :socket socket
-                             :external-format (http-server-external-format-out driver)
-                             :http-server driver))))
+        (let ((req (make-instance 'request
+                                  :socket socket
+                                  :external-format (http-server-external-format-in driver))))
+          (cons req
+                (make-instance 'reply
+                               :socket socket
+                               :request req
+                               :external-format (http-server-external-format-out driver)
+                               :http-server driver)))))
 
 (defmethod on-server-connection ((driver http-server-driver) socket)
   (new-request driver socket))
@@ -285,14 +290,20 @@
     (let ((*request* req)
           (*reply* rep)
           (*http-server* driver))
-      (if (request-method req)
-          (on-request-data user-driver (if-let (format (request-external-format req))
+      (case (request-state req)
+        (:headers
+         (parse-headers driver user-driver data))
+        (:body
+         (on-request-data user-driver (if-let (format (request-external-format req))
                                          (babel:octets-to-string data :encoding format)
-                                         data))
-          (parse-headers user-driver (socket-server socket) data)))))
+                                         data)))
+        (:closed
+         (if (request-keep-alive-p *request*)
+             (new-request driver socket)
+             (close socket)))))))
 
 (defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf-ascii+ +crlf-ascii+)))
-(defun parse-headers (driver server data)
+(defun parse-headers (server driver data)
   (multiple-value-bind (donep parser rest)
       (feed-parser (request-request-parser *request*) (babel:octets-to-string data :encoding :ascii))
     (when donep
@@ -301,33 +312,42 @@
             (request-url *request*) (request-parser-url parser)
             (request-headers *request*) (request-parser-headers parser))
       (when (string-equal "1.0" (request-http-version *request*))
-        (setf (reply-keep-alive-p *reply*) nil)))
+        (setf (request-keep-alive-p *request*) nil)))
     (when rest
       (if donep
-          (progn
-            (when (member '(:expect . "100-continue") (request-headers *request*)
-                          :test #'equalp)
-              ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
-              (write-sequence +100-continue+ (reply-socket *reply*)))
-            (when (member '(:connection . "keep-alive") (request-headers *request*)
-                          :test #'equalp)
-              (setf (reply-keep-alive-p *reply*) t))
-            (when (member '(:connection . "close") (request-headers *request*)
-                          :test #'equalp)
-              (setf (reply-keep-alive-p *reply*) nil))
-            (when (member :upgrade (request-headers *request*)
-                          :test #'eq
+          (cond ((or
+                  (member :upgrade (request-headers *request*)
+                          :test #'string-equal
                           :key #'car)
-              (on-request-upgrade driver))
-            (on-http-request driver)
-            (on-request-data driver (let ((rest-octets (babel:string-to-octets rest :encoding :ascii)))
-                                      (if-let (format (request-external-format *request*))
-                                        (babel:octets-to-string rest-octets :encoding format)
-                                        rest-octets))))
-          (parse-headers driver server rest)))))
+                  (string-equal "CONNECT" (request-method *request*)))
+                 (close *request*)
+                 (unregister-http-socket server *socket*)
+                 (on-request-upgrade driver (babel:string-to-octets rest :encoding :ascii)))
+                (t
+                 (when (member '(:expect . "100-continue") (request-headers *request*)
+                               :test #'equalp)
+                   ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
+                   (write-sequence +100-continue+ (reply-socket *reply*)))
+                 (when (member '(:connection . "keep-alive") (request-headers *request*)
+                               :test #'equalp)
+                   (setf (request-keep-alive-p *request*) t))
+                 (when (member '(:connection . "close") (request-headers *request*)
+                               :test #'equalp)
+                   (setf (request-keep-alive-p *request*) nil))
+                 (setf (request-state *request*) :body)
+                 (on-http-request driver)
+                 (on-request-data driver
+                                  (let ((rest-octets (babel:string-to-octets rest :encoding :ascii)))
+                                    (if-let (format (request-external-format *request*))
+                                      (babel:octets-to-string rest-octets :encoding format)
+                                      rest-octets)))))
+          (parse-headers server driver rest)))))
+
+(defun unregister-http-socket (driver socket)
+  (remhash socket (http-server-connections driver)))
 
 (defmethod on-socket-close ((driver http-server-driver))
-  (remhash *socket* (http-server-connections driver)))
+  (unregister-http-socket driver *socket*))
 
 (defun http-listen (driver &key
                     (host iolib:+ipv4-unspecified+)
