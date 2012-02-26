@@ -26,6 +26,9 @@
   ((driver ((server a))
     :accessorp t
     :documentation "User driver for http server event dispatch.")
+   (server ((server a))
+    :accessorp t
+    :documentation "Conserv TCP server instance that this http server is running on top of.")
    (connections ((server a))
     :documentation "Internal -- hash table holding the current socket connections for this server,
                     and their associated requests/replies.")
@@ -34,35 +37,51 @@
     :documentation "Default external-format for requests.")
    (external-format-out ((server a))
     :accessorp t
-    :documentation "Default external-format for replies."))
+    :documentation "Default external-format for replies.")
+   (closed-p ((server a))
+    :accessorp t
+    :documentation "Internal -- whether the server has been closed."))
   (:prefix http-server-))
 
 (defmethod close ((req request) &key abort &aux (socket (request-socket req)))
-  (setf (request-state req) :closed)
-  (if (and (request-keep-alive-p *request*) (not abort))
-      (new-request (request-http-server req) socket)
-      (close socket :abort abort)))
+  (unless (eq :closed (request-state req))
+    (when abort
+      (setf (request-keep-alive-p req) nil))
+    (setf (request-state req) :closed)
+    (on-request-close (request-driver req))
+    (if (request-keep-alive-p *request*)
+        (new-request (request-http-server req) socket)
+        (close socket :abort abort))))
 
 (defclass http-server ()
   ((driver :initarg :driver :accessor http-server-driver)
+   (server :accessor http-server-server)
    (external-format-in :initarg :external-format-in :accessor http-server-external-format-in)
    (external-format-out :initarg :external-format-out :accessor http-server-external-format-out)
-   (connections :initform (make-hash-table) :accessor http-server-connections)))
+   (connections :initform (make-hash-table) :accessor http-server-connections)
+   (closedp :initform nil :accessor http-server-closed-p)))
 
 (defun new-request (server socket)
-  (setf (gethash socket (http-server-connections server))
-        (let ((req (make-instance 'request
-                                  :socket socket
-                                  :http-server server
-                                  :external-format (http-server-external-format-in server))))
-          (cons req
-                (make-instance 'reply
+  (let* ((driver (http-server-driver server))
+         (*http-server* server)
+         (*request* (make-instance 'request
+                                   :socket socket
+                                   :driver driver
+                                   :http-server server
+                                   :external-format (http-server-external-format-in server)))
+         (*reply* (make-instance 'reply
                                :socket socket
-                               :request req
+                               :driver driver
+                               :request *request*
                                :external-format (http-server-external-format-out server)
-                               :http-server server)))))
+                               :http-server server)))
+    (setf (gethash socket (http-server-connections server))
+          (cons *request* *reply*))))
 
 (defmethod on-server-connection ((server http-server) socket)
+  (let ((*http-server* server)
+        (*socket* socket))
+    (on-http-connection (http-server-driver server)))
   (new-request server socket))
 
 (defmethod on-socket-data ((server http-server) data
@@ -144,17 +163,38 @@
 
 (defmethod on-socket-close ((server http-server))
   (unregister-http-socket server *socket*))
+(defmethod on-server-listen ((server http-server))
+  (let ((*http-server* server))
+    (on-http-listen (http-server-driver server))))
+(defmethod on-server-close ((server http-server))
+  (unless (http-server-closed-p server)
+    (close server :abort t)))
+#+nil(defmethod on-socket-error ((server http-server) error)
+  (on-http-error (http-server-driver server) error))
+
+(defmethod close ((server http-server) &key abort)
+  (loop for (request . reply) in (hash-table-values (http-server-connections server))
+     do (setf (request-keep-alive-p request) nil)
+       (close reply :abort abort))
+  (clrhash (http-server-connections server))
+  (setf (http-server-closed-p server) t)
+  (close (http-server-server server) :abort abort)
+  (let ((*http-server* server))
+    (on-http-close (http-server-driver server))))
 
 (defun http-listen (driver &key
                     (host iolib:+ipv4-unspecified+)
                     (port 8080)
                     (external-format-in *default-external-format*)
                     (external-format-out *default-external-format*))
-  (server-listen (make-instance 'http-server
-                                :driver driver
-                                :external-format-in external-format-in
-                                :external-format-out external-format-out)
-                 :host host
-                 :port port
-                 :external-format-in nil
-                 :external-format-out nil))
+  (let ((http-server (make-instance 'http-server
+                                    :driver driver
+                                    :external-format-in external-format-in
+                                    :external-format-out external-format-out)))
+    (setf (http-server-server http-server)
+          (server-listen http-server
+                         :host host
+                         :port port
+                         :external-format-in nil
+                         :external-format-out nil))
+    http-server))

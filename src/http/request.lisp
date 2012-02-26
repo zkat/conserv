@@ -8,7 +8,8 @@
     :documentation "Event called when *REQUEST* has received data from the user-agent. DATA will be
                     automatically encoded according to (request-external-format *request*).")
    (continue ((driver a))
-    :default-form nil)
+    :documentation "Event called when the user-agent sent the Expect: 100-continue header. By
+                    default, this event calls WRITE-CONTINUE on *REPLY*.")
    (upgrade ((driver a) data)
     :default-form (close *socket* :abort t)
     :documentation "Event called when *REQUEST* has received either an Upgrade: header, or a CONNECT
@@ -47,6 +48,8 @@
     :documentation "Internal -- Request parser object.")
    (http-server ((request a))
     :documentation "HTTP server associated with this request.")
+   (driver ((request a))
+    :documentation "Driver instance for dispatching REQUEST's events.")
    (keep-alive-p ((request a))
     :accessorp t
     :documentation "Controls whether the underlying connection should be closed after this request
@@ -65,6 +68,7 @@
    (external-format :initarg :external-format :accessor request-external-format)
    (request-parser :initform (make-request-parser) :reader request-request-parser)
    (http-server :reader request-http-server :initarg :http-server)
+   (driver :reader request-driver :initarg :driver)
    (keep-alive-p :accessor request-keep-alive-p :initform t)
    (state :accessor request-state :initform :headers)
    (socket :initarg :socket :reader request-socket)))
