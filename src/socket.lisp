@@ -46,6 +46,7 @@
 ;; Base socket protocol
 (defprotocol socket (a)
   ((driver ((socket a))
+    :accessorp t
     :documentation "Driver object used to dispatch SOCKET's events.")
    (server ((socket a))
     :accessorp t
@@ -66,10 +67,12 @@
    (bytes-written ((socket a))
     :accessorp t)
    (external-format-in ((socket a))
+    :accessorp t
     :documentation "External format to use when converting incoming octets into characters. If NIL,
                     no encoding will be done on incoming data, and ON-SOCKET-DATA will receive the
                     raw (unsigned-byte 8) data.")
    (external-format-out ((socket a))
+    :accessorp t
     :documentation "External format to use for outgoing octets and strings. If NIL, an error is
                     signaled if an attempt is made to write a string to the socket.")
    (close-after-drain-p ((socket a))
@@ -90,7 +93,7 @@
 (defclass socket (trivial-gray-stream-mixin
                   fundamental-binary-output-stream
                   fundamental-character-output-stream)
-  ((driver :initarg :driver :reader socket-driver)
+  ((driver :initarg :driver :accessor socket-driver)
    (server :initform nil :accessor socket-server)
    (internal-socket :accessor socket-internal-socket)
    (read-buffer :reader socket-read-buffer)
@@ -99,8 +102,8 @@
    (write-buffer-offset :initform 0 :accessor socket-write-buffer-offset)
    (bytes-read :initform 0 :accessor socket-bytes-read)
    (bytes-written :initform 0 :accessor socket-bytes-written)
-   (external-format-in :initarg :external-format-in :reader socket-external-format-in)
-   (external-format-out :initarg :external-format-out :reader socket-external-format-out)
+   (external-format-in :initarg :external-format-in :accessor socket-external-format-in)
+   (external-format-out :initarg :external-format-out :accessor socket-external-format-out)
    (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)
    (readingp :initform nil :accessor socket-reading-p)
    (writingp :initform nil :accessor socket-writing-p)))
