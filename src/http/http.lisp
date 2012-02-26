@@ -106,8 +106,8 @@
                 (t
                  (when (member '(:expect . "100-continue") (request-headers *request*)
                                :test #'equalp)
-                   ;; TODO - perhaps we shouldn't write this when the client's HTTP version is <1.1?
-                   (write-sequence +100-continue+ (reply-socket *reply*)))
+                   #+nil(on-request-continue driver)
+                   (write-continue *reply*))
                  (when (member '(:connection . "keep-alive") (request-headers *request*)
                                :test #'equalp)
                    (setf (request-keep-alive-p *request*) t))
@@ -122,6 +122,12 @@
                                       (babel:octets-to-string rest-octets :encoding format)
                                       rest-octets)))))
           (parse-headers server driver rest)))))
+
+(defmethod on-request-continue ((driver t))
+  (write-continue *reply*))
+
+(defun write-continue (reply)
+  (write-sequence +100-continue+ (reply-socket reply)))
 
 (defun upgrade-request (request socket server driver rest)
   ;; HACK - This is terrible. Because CLOSE will close the underlying socket if request-keep-alive-p
