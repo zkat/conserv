@@ -185,24 +185,26 @@
       `(let ((,dynamics-var (plist-alist (list ,@dynamic)))
              (,literals-var (plist-alist (list ,@literal)))
              (,reply-var ,reply))
-         (setf (reply-header-bytes ,reply-var) ,(cond ((and literal dynamic)
-                                                       `(concatenate '(vector (unsigned-byte 8))
-                                                                     ,compiled
-                                                                     (babel:string-to-octets
-                                                                      (calculate-header-string ,dynamics-var)
-                                                                      :encoding :ascii)))
-                                                      (compiled
-                                                       (concatenate '(vector (unsigned-byte 8))
-                                                                    compiled
-                                                                    (babel:string-to-octets
-                                                                     (calculate-header-string nil)
-                                                                     :encoding :ascii)))
-                                                      (dynamic `(babel:string-to-octets
-                                                                 (calculate-header-string ,dynamics-var)
-                                                                 :encoding :ascii)))
+         (setf (reply-header-bytes ,reply-var)
+               ,(cond ((and literal dynamic)
+                       `(concatenate '(vector (unsigned-byte 8))
+                                     ,compiled
+                                     (babel:string-to-octets
+                                      (calculate-header-string ,dynamics-var)
+                                      :encoding :ascii)))
+                      (compiled
+                       (concatenate '(vector (unsigned-byte 8))
+                                    compiled
+                                    (babel:string-to-octets
+                                     (calculate-header-string nil)
+                                     :encoding :ascii)))
+                      (dynamic `(babel:string-to-octets
+                                 (calculate-header-string ,dynamics-var)
+                                 :encoding :ascii)))
                ;; NOTE - nconc is *probably* okay here. literals and dynamics have already been
                ;;        used above...
-               (reply-headers ,reply-var) (nconc ,literals-var ,dynamics-var))))))
+               (reply-headers ,reply-var)
+               (nconc ,literals-var ,dynamics-var))))))
 
 ;;; Reply Gray Streams
 (defun ensure-headers-written (reply)
