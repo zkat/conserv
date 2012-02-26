@@ -43,44 +43,44 @@
       (new-request (request-http-server req) socket)
       (close socket :abort abort)))
 
-(defclass http-server-driver ()
+(defclass http-server ()
   ((driver :initarg :driver :accessor http-server-driver)
    (external-format-in :initarg :external-format-in :accessor http-server-external-format-in)
    (external-format-out :initarg :external-format-out :accessor http-server-external-format-out)
    (connections :initform (make-hash-table) :accessor http-server-connections)))
 
-(defun new-request (driver socket)
-  (setf (gethash socket (http-server-connections driver))
+(defun new-request (server socket)
+  (setf (gethash socket (http-server-connections server))
         (let ((req (make-instance 'request
                                   :socket socket
-                                  :http-server driver
-                                  :external-format (http-server-external-format-in driver))))
+                                  :http-server server
+                                  :external-format (http-server-external-format-in server))))
           (cons req
                 (make-instance 'reply
                                :socket socket
                                :request req
-                               :external-format (http-server-external-format-out driver)
-                               :http-server driver)))))
+                               :external-format (http-server-external-format-out server)
+                               :http-server server)))))
 
-(defmethod on-server-connection ((driver http-server-driver) socket)
-  (new-request driver socket))
+(defmethod on-server-connection ((server http-server) socket)
+  (new-request server socket))
 
-(defmethod on-socket-data ((driver http-server-driver) data
+(defmethod on-socket-data ((server http-server) data
                            &aux
-                           (user-driver (http-server-driver driver))
+                           (driver (http-server-driver server))
                            (socket *socket*))
   (destructuring-bind (req . rep)
-      (gethash socket (http-server-connections driver))
+      (gethash socket (http-server-connections server))
     (let ((*request* req)
           (*reply* rep)
-          (*http-server* driver))
+          (*http-server* server))
       (case (request-state req)
         (:headers
-         (parse-headers driver user-driver data))
+         (parse-headers server driver data))
         (:body
-         (on-request-data user-driver (if-let (format (request-external-format req))
-                                         (babel:octets-to-string data :encoding format)
-                                         data)))))))
+         (on-request-data driver (if-let (format (request-external-format req))
+                                   (babel:octets-to-string data :encoding format)
+                                   data)))))))
 
 (defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf-ascii+ +crlf-ascii+)))
 (defun parse-headers (server driver data)
@@ -133,18 +133,18 @@
   (setf (socket-driver socket) nil)
   (on-request-upgrade driver (babel:string-to-octets rest :encoding :ascii)))
 
-(defun unregister-http-socket (driver socket)
-  (remhash socket (http-server-connections driver)))
+(defun unregister-http-socket (server socket)
+  (remhash socket (http-server-connections server)))
 
-(defmethod on-socket-close ((driver http-server-driver))
-  (unregister-http-socket driver *socket*))
+(defmethod on-socket-close ((server http-server))
+  (unregister-http-socket server *socket*))
 
 (defun http-listen (driver &key
                     (host iolib:+ipv4-unspecified+)
                     (port 8080)
                     (external-format-in *default-external-format*)
                     (external-format-out *default-external-format*))
-  (server-listen (make-instance 'http-server-driver
+  (server-listen (make-instance 'http-server
                                 :driver driver
                                 :external-format-in external-format-in
                                 :external-format-out external-format-out)
