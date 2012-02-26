@@ -3,24 +3,38 @@
 (defvar *http-server*)
 (defprotocol http-server-event-driver (a)
   ((listen ((driver a))
-    :default-form nil)
+    :default-form nil
+    :documentation "Event called when *HTTP-SERVER* has just started listening for connections.")
    (request ((driver a))
-    :default-form nil)
-   #+nil(connection ((driver a) server socket))
+    :default-form nil
+    :documentation "Event called when an incoming HTTP request has been made. *REQUEST* and *REPLY*
+                    are both available, at this point.")
+   (connection ((driver a))
+    :default-form nil
+    :documentation "Event called when a user-agent first connects to the server. *SOCKET* contains
+                    the incoming socket connection. *REQUEST* and *REPLY* are NOT bound at this
+                    point.")
    (close ((driver a))
-    :default-form nil)
+    :default-form nil
+    :documentation "Event called when *HTTP-SERVER* has closed.")
    (error ((driver a) error)
-    :default-form nil))
+    :default-form nil
+    :documentation "Event called when an error has happened during processing."))
   (:prefix on-http-))
 
 (defprotocol http-server (a)
   ((driver ((server a))
-    :accessorp t)
-   (connections ((server a)))
+    :accessorp t
+    :documentation "User driver for http server event dispatch.")
+   (connections ((server a))
+    :documentation "Internal -- hash table holding the current socket connections for this server,
+                    and their associated requests/replies.")
    (external-format-in ((server a))
-    :accessorp t)
+    :accessorp t
+    :documentation "Default external-format for requests.")
    (external-format-out ((server a))
-    :accessorp t))
+    :accessorp t
+    :documentation "Default external-format for replies."))
   (:prefix http-server-))
 
 (defmethod close ((req request) &key abort &aux (socket (request-socket req)))
