@@ -90,19 +90,13 @@
       (new-request (request-http-server req) socket)
       (close socket :abort abort)))
 
-;; TODO - the reply implementation needs to go below all the header parsing later anyway.
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun format-header (stream name value)
-    (format stream "~:(~A~): ~A~A" name value +crlf-ascii+)))
-
 (defclass reply (trivial-gray-stream-mixin
                  fundamental-binary-output-stream
                  fundamental-character-output-stream)
   ((headers :accessor reply-headers :initform '((:transfer-encoding . "chunked")))
    (header-bytes :accessor reply-header-bytes
                  :initform #.(babel:concatenate-strings-to-octets
-                              :ascii
-                              (format-header nil :transfer-encoding "chunked")
+                              :ascii "Transfer-Encoding: chunked"
                               +crlf-ascii+))
    (status :accessor reply-status :initform 200)
    (socket :reader reply-socket :initarg :socket)
@@ -129,6 +123,9 @@
 (defmethod (setf reply-headers) :after (new-headers (reply reply))
   (when (member :content-length new-headers :key #'car :test #'string-equal)
     (setf (reply-chunked-p reply) nil)))
+
+(defun format-header (stream name value)
+  (format stream "~:(~A~): ~A~A" name value +crlf-ascii+))
 
 (defun calculate-header-string (header-alist)
   (with-output-to-string (s)
