@@ -213,4 +213,7 @@
     (write-sequence #.(make-array 5 :element-type '(unsigned-byte 8)
                                   :initial-contents #(48 13 10 13 10))
                     (reply-socket reply)))
+  (when (member '(:connection . "close") (reply-headers reply)
+                :test 'equalp)
+    (setf (request-keep-alive-p (reply-request reply)) nil))
   (close (reply-request reply) :abort abort))
