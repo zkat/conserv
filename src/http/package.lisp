@@ -11,7 +11,7 @@
    ;; HTTP
    #:http-listen
    #:on-http-request
-   #:on-http-upgrade
+   #:on-request-upgrade
    #:on-request-data
    #:reply-headers))
 

@@ -311,6 +311,8 @@
             (request-http-version *request*) (request-parser-http-version parser)
             (request-url *request*) (request-parser-url parser)
             (request-headers *request*) (request-parser-headers parser))
+      ;; Connection: keep-alive is required in HTTP/1.0, but the default in HTTP/1.1
+      ;; TODO - Probably shouldn't even support this for 0.9. This code also treats 0.9 as 1.1...
       (when (string-equal "1.0" (request-http-version *request*))
         (setf (request-keep-alive-p *request*) nil)))
     (when rest
