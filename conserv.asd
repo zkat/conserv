@@ -20,4 +20,6 @@
                                   :components
                                   ((:file "package")
                                    (:file "headers")
+                                   (:file "request")
+                                   (:file "reply")
                                    (:file "http")))))))
