@@ -62,7 +62,7 @@ whenever a connection is accepted.
   Event called when `*socket*` has received some new `data`. If
   `(socket-external-format-in *socket*)` is `nil`, `data` will by an array of
   `(unsigned-byte 8)`. Otherwise, it will be used to encode the incoming data before passing it to
-  `on-socket-data`"
+  `on-socket-data`.
 
 *[generic function]* `on-socket-close driver`
 
@@ -96,7 +96,7 @@ whenever a connection is accepted.
 
   External format to use when converting incoming octets into characters. If `nil`,
   no encoding will be done on incoming data, and `on-socket-data` will receive the
-  raw `(unsigned-byte 8)` data."
+  raw `(unsigned-byte 8)` data.
 
 *[accessor]* `socket-external-format-out socket`
 
@@ -230,4 +230,4 @@ although this can safely be changed by `setf`ing `socket-driver` inside the `ser
 *[function]* `server-resume server`
 
   Resumes read events for `server`, enabling new client connections. If `server` was already
-  accepting clients, this function has no effect." 
+  accepting clients, this function has no effect.
