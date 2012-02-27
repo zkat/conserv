@@ -1,12 +1,16 @@
-# Quickstart example
+# Quickstart
 
-Setting up Conserv is painless using [Quicklisp](http://quicklisp.org).
+Setting up Conserv is painless using [Quicklisp](http://quicklisp.org). If the library isn't
+available on Quicklisp yet, you can get it by doing
+`$ git clone git://github.com/zkat/conserv.git` before trying to quickload it.
 
 ```lisp
 CL-USER> (ql:quickload 'conserv)
          ...
          ...
          ...
+CL-USER> (defclass echo () ())
+#<STANDARD-CLASS ECHO>
 CL-USER> (defmethod conserv.tcp:on-socket-data ((driver echo) data)
            (write-sequence data conserv.tcp:*socket*))
 #<STANDARD-METHOD CONSERV:ON-SOCKET-DATA (ECHO T)>
