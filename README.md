@@ -43,6 +43,6 @@ it'll take care of the rest.
 Conserv splits its various supported protocols between several packages. Documentation for
 individual packages can be found under docs/<package-name>.md
 
-conserv - Includes the basic event library. with-event-loop, add-timer, exit-event-loop, and so on.
-conserv.tcp - TCP client/server
-conserv.http - HTTP server
+  * conserv - Includes the basic event library. with-event-loop, add-timer, exit-event-loop, and so on.
+  * conserv.tcp - TCP client/server
+  * conserv.http - HTTP server
