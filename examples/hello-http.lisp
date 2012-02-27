@@ -36,7 +36,7 @@
   (setf (socket-driver *socket*) (make-instance 'hello-websocket)
         (socket-external-format-out *socket*) :ascii)
   (let ((crlf (coerce '(#\return #\linefeed) 'string)))
-    (format *socket* "HTTP/1.1 101 Web Socket Protocol Handshake~A" crlf)
+    (format *socket* "HTTP/1.1 101 Switching Protocols~A" crlf)
     (format *socket* "Upgrade: WebSocket~A" crlf)
     (format *socket* "Connection: Upgrade~A~A" crlf crlf))
   (on-socket-data driver data))
