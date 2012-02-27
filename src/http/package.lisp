@@ -2,7 +2,9 @@
   (:use #:cl
         #:alexandria
         #:trivial-gray-streams
-        #:conserv)
+        #:conserv
+        #:conserv.utils
+        #:conserv.tcp)
   (:export
    ;; Requests
    #:*request*

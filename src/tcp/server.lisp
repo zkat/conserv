@@ -1,4 +1,4 @@
-(in-package #:conserv)
+(in-package #:conserv.tcp)
 
 (defvar *server*)
 (defprotocol server-event-driver (a)

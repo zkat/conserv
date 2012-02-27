@@ -10,11 +10,15 @@
   :components ((:module src
                         :serial t
                         :components
-                        ((:file "package")
-                         (:file "utils")
+                        ((:file "utils")
+                         (:file "package")
                          (:file "event-loop")
-                         (:file "socket")
-                         (:file "server")
+                         (:module tcp
+                                  :serial t
+                                  :components
+                                  ((:file "package")
+                                   (:file "socket")
+                                   (:file "server")))
                          (:module http
                                   :serial t
                                   :components

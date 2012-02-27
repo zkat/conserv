@@ -1,4 +1,4 @@
-(in-package #:conserv)
+(in-package #:conserv.tcp)
 
 (deftype octet ()
   '(unsigned-byte 8))
@@ -88,7 +88,6 @@
   (:prefix socket-))
 
 ;;; Implementation
-(defvar *default-external-format* :utf-8)
 (defvar *max-buffer-size* 16384)
 (defclass socket (trivial-gray-stream-mixin
                   fundamental-binary-output-stream

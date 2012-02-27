@@ -1,5 +1,20 @@
 (cl:defpackage #:conserv-hello-http
-  (:use :cl :conserv :conserv.http))
+  (:use #:cl
+        :conserv :conserv.http)
+  (:import-from #:conserv
+                #:with-event-loop)
+  (:import-from #:conserv.http
+                #:*reply*
+                #:http-listen
+                #:set-headers
+                #:on-http-request
+                #:on-request-upgrade)
+  ;; Upgrading a connection gives us the raw *socket*, so we need to pull those symbols in.
+  (:import-from #:conserv.tcp
+                #:*socket*
+                #:on-socket-data
+                #:socket-driver
+                #:socket-external-format-out))
 (cl:in-package #:conserv-hello-http)
 
 (defclass hello-http () ())

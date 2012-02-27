@@ -1,6 +1,17 @@
-(defpackage #:conserv-echo
-  (:use :cl :conserv))
-(in-package #:conserv-echo)
+(defpackage #:conserv.examples.echo
+  (:use #:cl)
+  (:import-from #:conserv
+                #:with-event-loop
+                #:exit-event-loop)
+  (:import-from #:conserv.tcp
+                #:*socket*
+                #:*server*
+                #:socket-connect
+                #:server-listen
+                #:on-socket-data
+                #:on-server-connection
+                #:on-server-close))
+(in-package #:conserv.examples.echo)
 
 ;; 'Bare-minimum' echo server
 (defclass echo-test () ())
