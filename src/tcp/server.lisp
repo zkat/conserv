@@ -73,23 +73,24 @@
     (add-timer (curry #'server-resume server) timeout :one-shot t)))
 
 (defun server-resume (server)
-  (iolib:set-io-handler
-   (server-event-base server)
-   (iolib:socket-os-fd (socket-internal-socket (server-socket server)))
-   :read (lambda (&rest ig)
-           (declare (ignore ig))
-           (when-let (client-sock (iolib:accept-connection (socket-internal-socket
-                                                            (server-socket server))))
-             (let ((socket (make-socket (server-client-driver server)
-                                        :external-format-in (server-external-format-in server)
-                                        :external-format-out (server-external-format-out server))))
-               (setf (gethash socket (server-connections server)) socket
-                     (socket-internal-socket socket) client-sock
-                     (socket-server socket) server)
-               (let ((*server* server))
-                 (on-server-connection (server-driver server) socket))
-               (socket-resume socket)
-               (start-writes socket))))))
+  (when (socket-paused-p (server-socket server))
+    (iolib:set-io-handler
+     (server-event-base server)
+     (iolib:socket-os-fd (socket-internal-socket (server-socket server)))
+     :read (lambda (&rest ig)
+             (declare (ignore ig))
+             (when-let (client-sock (iolib:accept-connection (socket-internal-socket
+                                                              (server-socket server))))
+               (let ((socket (make-socket (server-client-driver server)
+                                          :external-format-in (server-external-format-in server)
+                                          :external-format-out (server-external-format-out server))))
+                 (setf (gethash socket (server-connections server)) socket
+                       (socket-internal-socket socket) client-sock
+                       (socket-server socket) server)
+                 (let ((*server* server))
+                   (on-server-connection (server-driver server) socket))
+                 (socket-resume socket)
+                 (start-writes socket)))))))
 
 (defun server-listen (driver &key
                       (host iolib:+ipv4-unspecified+)
