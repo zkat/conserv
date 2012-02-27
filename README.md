@@ -2,17 +2,19 @@
 
 Setting up Conserv is painless using [Quicklisp](http://quicklisp.org).
 
-    CL-USER> (ql:quickload 'conserv)
-             ...
-             ...
-             ...
-    CL-USER> (defmethod conserv.tcp:on-socket-data ((driver echo) data)
-               (write-sequence data conserv.tcp:*socket*))
-    #<STANDARD-METHOD CONSERV:ON-SOCKET-DATA (ECHO T)>
-    CL-USER> (conserv:with-event-loop ()
-               (conserv.tcp:server-listen (make-instance 'echo)
-                                          :host "127.0.0.1"
-                                          :port 1337))
+```lisp
+CL-USER> (ql:quickload 'conserv)
+         ...
+         ...
+         ...
+CL-USER> (defmethod conserv.tcp:on-socket-data ((driver echo) data)
+           (write-sequence data conserv.tcp:*socket*))
+#<STANDARD-METHOD CONSERV:ON-SOCKET-DATA (ECHO T)>
+CL-USER> (conserv:with-event-loop ()
+           (conserv.tcp:server-listen (make-instance 'echo)
+                                      :host "127.0.0.1"
+                                      :port 1337))
+```
 
 Now in a terminal...
 
