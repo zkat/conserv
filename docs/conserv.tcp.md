@@ -36,13 +36,14 @@ whenever a connection is accepted.
   The fact that `on-socket-error` receives the actual condition allows a sort of
   condition handling by specializing both the driver and the condition. For
   example:
-```lisp
-  (defmethod on-socket-error ((driver my-driver) (error something-harmless))
-    (format t \"~&Nothing to see here.~%\"))
 
-  (defmethod on-socket-error ((driver my-driver) (error blood-and-guts))
-    (format t \"~&Oh, the humanity!~%\")
-    (drop-connection error))"
+```lisp
+(defmethod on-socket-error ((driver my-driver) (error something-harmless))
+  (format t \"~&Nothing to see here.~%\"))
+
+(defmethod on-socket-error ((driver my-driver) (error blood-and-guts))
+  (format t \"~&Oh, the humanity!~%\")
+  (drop-connection error))"
 ```
 *[restart function]* `drop-connection &optional condition`
 
