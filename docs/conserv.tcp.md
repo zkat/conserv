@@ -79,11 +79,16 @@ whenever a connection is accepted.
 
   Establishes a TCP connection with `host`. If successful, returns a `socket` object.
 
-  * `driver` -- an instance of a driver class that will be used to dispatch `socket-event-driver` events.
-  * `host` -- Either a string representing a remote IP address or hostname, or a pathname to a local IPC socket.
+  * `driver` -- an instance of a driver class that will be used to dispatch `socket-event-driver`
+    events.
+  * `host` -- Either a string representing a remote IP address or hostname, or a pathname to a local
+    IPC socket.
   * `port` -- Port number to connect to. Should not be provided if `host` is an IPC socket.
-  * `external-format-in` -- Either an external format or `nil`. Used for determining the encoding of data passed to `on-socket-data`
-  * `external-format-out` -- Either an external format or `nil`. Used for converting strings written to the socket. If `nil`, an error will be signaled if an attempt is made to write a string to the socket.
+  * `external-format-in` -- Either an external format or `nil`. Used for determining the encoding of
+    data passed to `on-socket-data`
+  * `external-format-out` -- Either an external format or `nil`. Used for converting strings written
+    to the socket. If `nil`, an error will be signaled if an attempt is made to write a string to
+    the socket.
 
 *[accessor]* `socket-driver socket`
 
@@ -193,8 +198,10 @@ although this can safely be changed by `setf`ing `socket-driver` inside the `ser
 
   Starts a TCP listener. If successful, returns a `server` object.
 
-  * `driver` -- An instance of a driver class that will be used to dispatch `server-event-driver` events. This driver will also be set as the `socket-driver` for incoming connections.
-  * `host` -- Either a string representing a local IP address to bind to, or a pathname to use as a unix socket.
+  * `driver` -- An instance of a driver class that will be used to dispatch `server-event-driver`
+    events. This driver will also be set as the `socket-driver` for incoming connections.
+  * `host` -- Either a string representing a local IP address to bind to, or a pathname to use as a
+    unix socket.
   * `port` -- Port to listen on. Should not be provided if `host` is a unix socket.
   * `external-format-in` -- Default external-format-in for client connections.
   * `external-format-out` -- Default external-format-out for client connections.

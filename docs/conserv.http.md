@@ -202,8 +202,8 @@ associated with the request.
 *[accessor]* `reply-status reply`
 
   HTTP status code for this reply. Can be either a simple integer, such as `404`, or a cons of
-  `(code . message-string)`, such as `(404 . \"Not Found\")`. If no message is present, only the
-  code is sent to clients. Returns `(200 . \"OK\")` by default.
+  `(code . message-string)`, such as `(404 . "Not Found")`. If no message is present, only the
+  code is sent to clients. Returns `(200 . "OK")` by default.
 
 *[function]* `reply-headers reply`
 
@@ -213,12 +213,12 @@ associated with the request.
 
   Certain headers trigger special behavior:
 
-  * `(:connection . \"close\")` -- Disables keep-alive (if active), and requests
+  * `(:connection . "close")` -- Disables keep-alive (if active), and requests
     that the underlying socket connection be closed after the current request
     completes.
-  * `(:connection . \"keep-alive\")` -- Enables keep-alive (if not already active).
+  * `(:connection . "keep-alive")` -- Enables keep-alive (if not already active).
   * `(:content-length . integer)` -- Disables chunked encoding of outgoing data.
-  * `(:transfer-encoding . \"chunked\")` -- The default. Enables chunked encoding of outgoing data.
+  * `(:transfer-encoding . "chunked")` -- The default. Enables chunked encoding of outgoing data.
 
 *[function]* `set-headers reply &rest headers-and-values`
 
