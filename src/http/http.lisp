@@ -1,25 +1,30 @@
 (in-package #:conserv.http)
 
 (defvar *http-server*)
+(setf (documentation '*http-server* 'variable)
+      "During execution of `http-server-event-driver` events, this variable is bound to the
+       associated `http-server` object. This variable is unbound outside of the scope of
+       `http-server-event-driver` events.")
 (defprotocol http-server-event-driver (a)
   ((listen ((driver a))
     :default-form nil
-    :documentation "Event called when *HTTP-SERVER* has just started listening for connections.")
+    :documentation "Event called when `*http-server*` has just started listening for connections.")
    (request ((driver a))
     :default-form nil
-    :documentation "Event called when an incoming HTTP request has been made. *REQUEST* and *REPLY*
-                    are both available, at this point.")
+    :documentation "Event called when an incoming HTTP request has been made. `*request*` and
+                    `*reply*` are both available, at this point.")
    (connection ((driver a))
     :default-form nil
-    :documentation "Event called when a user-agent first connects to the server. *SOCKET* contains
-                    the incoming socket connection. *REQUEST* and *REPLY* are NOT bound at this
-                    point.")
+    :documentation "Event called when a user-agent first connects to the
+                    server. `conserv.tcp:*socket*` contains the incoming socket
+                    connection. `*request*` and `*reply*` are NOT bound at this point.")
    (close ((driver a))
     :default-form nil
-    :documentation "Event called when *HTTP-SERVER* has closed.")
+    :documentation "Event called after the `*http-server*` and all its active connections have been
+                    closed.")
    (error ((driver a) error)
     :default-form nil
-    :documentation "Event called when an error has happened during processing."))
+    :documentation "Event called when an error has happened during processing. `error` is the actual error condition signaled."))
   (:prefix on-http-))
 
 (defprotocol http-server (a)
@@ -173,6 +178,9 @@
   (on-http-error (http-server-driver server) error))
 
 (defmethod close ((server http-server) &key abort)
+  "Implementation of `cl:close` for `http-server`. Shuts down all active connections and then shuts
+down the http server itself, making the port available for listening again. If `abort` is true, all
+sockets are immediately shut down without waiting for any pre-shutdown cleanup to complete."
   (loop for (request . reply) in (hash-table-values (http-server-connections server))
      do (setf (request-keep-alive-p request) nil)
        (close reply :abort abort))
@@ -187,6 +195,15 @@
                     (port 8080)
                     (external-format-in *default-external-format*)
                     (external-format-out *default-external-format*))
+  "Starts an HTTP server listening on `host` and `port`. If successful, returns an `http-server`
+object.
+
+  * `driver` -- An instance of a driver class. Used to dispatch `http-server-event-driver` events.
+  * `host` -- Either a string representing a local IP address to bind to, or a pathname to use as a unix socket.
+  * `port` -- Port to listen on. Should not be provided if `host` is a unix socket.
+  * `external-format-in` -- Default `external-format` for requests.
+  * `external-format-out` -- Default `external-format` for replies."
+
   (let ((http-server (make-instance 'http-server
                                     :driver driver
                                     :external-format-in external-format-in

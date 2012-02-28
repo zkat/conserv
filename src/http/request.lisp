@@ -1,24 +1,32 @@
 (in-package #:conserv.http)
 
 (defvar *request*)
+(setf (documentation '*request* 'variable)
+      "During execution of `request-event-driver` events, this variable is bound to the associated
+`request` object. This variable is unbound outside of the scope of `request-event-driver` events,
+unless otherwise noted.")
 
 (defprotocol request-event-driver (a)
   ((data ((driver a) data)
     :default-form nil
-    :documentation "Event called when *REQUEST* has received data from the user-agent. DATA will be
-                    automatically encoded according to (request-external-format *request*).")
+    :documentation "Event called when `*request*` has received data from the user-agent. `data` will
+                    be automatically encoded according to `(request-external-format *request*)`.
+                    `*reply*` is also available when this event is invoked.")
    (continue ((driver a))
-    :documentation "Event called when the user-agent sent the Expect: 100-continue header. By
-                    default, this event calls WRITE-CONTINUE on *REPLY*.")
+    :documentation "Event called when the user-agent sent the `Expect: 100-continue` header. By
+                    default, this event calls `write-continue` on `*reply*`.")
    (upgrade ((driver a) data)
     :default-form (close *socket* :abort t)
-    :documentation "Event called when *REQUEST* has received either an Upgrade: header, or a CONNECT
-                    method in an HTTP request. When this happens, *request*'s socket is deregistered
-                    with the HTTP server. The socket is available through the *socket* variable. By
-                    default, this event immediately shuts down the socket.")
+    :documentation "Event called when `*request*` has received either an `Upgrade:` header, or a
+                    `CONNECT` method in an HTTP request. When this happens, `*request*`'s socket is
+                    deregistered with the HTTP server. The socket is available through the
+                    `conserv.tcp:*socket*` variable. `data` is the first chunk of non-header data
+                    received by the socket, and is either `nil`, or an array of `(unsigned-byte 8)`,
+                    regardless of the `external-format` assigned to `*request*`. By default, this
+                    event immediately shuts down the socket.")
    (close ((driver a))
     :default-form nil
-    :documentation "Event called when *REQUEST* has been closed."))
+    :documentation "Event called after `*request*` has been closed."))
   (:prefix on-request-))
 
 (defprotocol request (a)
@@ -28,10 +36,10 @@
                     or :closed")
    (method ((request a))
     :accessorp t
-    :documentation "Request method as a string (e.g. \"GET\", \"POST\", \"CONNECT\")")
+    :documentation "Request method as a string (e.g. `\"GET\"`, `\"POST\"`, `\"CONNECT\"`)")
    (url ((request a))
     :accessorp t
-    :documentation "Request URL as a string (e.g. \"/\", \"/blog/post?number=1\")")
+    :documentation "Request URL as a string (e.g. `\"/\"`, `\"/blog/post?number=1\"`, `\"http://example.com/something\"`)")
    (headers ((request a))
     :accessorp t
     :documentation "An alist of (name . value) pairs. Header names are :keywords. All values are
@@ -39,11 +47,12 @@
    #+nil(trailers ((request a)))
    (http-version ((request a))
     :accessorp t
-    :documentation "HTTP version as a string. (e.g. \"1.1\", \"1.0\")")
+    :documentation "HTTP version as a string. (e.g. `\"1.1\"`, `\"1.0\"`)")
    (external-format ((request a))
     :accessorp t
-    :documentation "External format used to encode incoming data. If nil, no encoding will be done,
-                    and ON-REQUEST-DATA will receive arrays of (unsigned-byte 8) as its data.")
+    :documentation "External format used to encode incoming data. If `nil`, no encoding will be
+                    done, and `on-request-data` will receive arrays of `(unsigned-byte 8)` as its
+                    `data`.")
    (request-parser ((request a))
     :documentation "Internal -- Request parser object.")
    (http-server ((request a))

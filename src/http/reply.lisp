@@ -1,24 +1,38 @@
 (in-package #:conserv.http)
 
 (defvar *reply*)
+(setf (documentation '*reply* 'variable)
+      "During the execution of `reply-event-driver` events, this variable is bound to the associated
+      `reply` object. This variable is unbound outside of the scope of `reply-event-driver` events,
+      with the exception of certain `request`- and `http-server`-related events.")
 
 (defprotocol reply-event-driver (a)
   ((close ((driver a))
     :default-form nil
-    :documentation "Event called when *REPLY* has been closed."))
+    :documentation "Event called after `*reply*` has been closed."))
   (:prefix on-reply-))
 
 (defprotocol reply (a)
   ((status ((reply a))
     :accessorp t
-    :documentation "HTTP status code for this reply. Can be either a simple integer, such as 404, or
-                    a cons of (code . message-string), such as (404 . \"Not Found\"). If no
-                    message is present, only the code is sent to clients. Returns (200 . \"OK\") by
-                    default.")
+    :documentation "HTTP status code for this reply. Can be either a simple integer, such as `404`,
+                    or a cons of `(code . message-string)`, such as `(404 . \"Not Found\")`. If no
+                    message is present, only the code is sent to clients. Returns `(200 . \"OK\")`
+                    by default.")
    (headers ((reply a))
     :accessorp t
-    :documentation "An alist containing the outgoing headers. Header names can either be strings
-                    or :keywords. Values can be any printable lisp value.")
+    :documentation "An alist containing the outgoing headers. Header names can either be strings or
+                    `:keywords`. Values can be any printable lisp value. These headers should be set
+                    using the `set-headers` function.
+
+                    Certain headers trigger special behavior:
+
+                    * `(:connection . \"close\")` -- Disables keep-alive (if active), and requests
+                      that the underlying socket connection be closed after the current request
+                      completes.
+                    * `(:connection . \"keep-alive\")` -- Enables keep-alive (if not already active).
+                    * `(:content-length . integer)` -- Disables chunked encoding of outgoing data.
+                    * `(:transfer-encoding . \"chunked\")` -- The default. Enables chunked encoding of outgoing data.")
    (header-bytes ((reply a))
     :accessorp t
     :documentation "Internal -- ASCII-encoded bytes representing the outgoing headers.")
@@ -34,9 +48,9 @@
     :documentation "The server associated with this reply.")
    (external-format ((reply a))
     :accessorp t
-    :documentation "The external format used to encode outgoing strings. If NIL, attempting to write
-                    a string or character to the reply will signal an error, only (unsigned-byte 8)
-                    will be allowed.")
+    :documentation "The external format used to encode outgoing strings. If `nil`, attempting to
+                    write a string or character to the reply will signal an error --
+                    only arrays of `(unsigned-byte 8)` will be allowed.")
    (request ((reply a))
     :documentation "The request this reply is paired with.")
    (socket ((reply a))
@@ -80,6 +94,10 @@
 ;;        setf functions into something like (let ((val ,value)) (funcall #'(setf foo) val)), which
 ;;        will always pass 'val as the literal argument to the compiler macro. :(
 (defun set-headers (reply &rest headers &aux (alist (plist-alist headers)))
+  "Sets `reply`'s outgoing headers. `headers` is a plist of `header-name` `header-value` pairs. On
+output, header values will be converted to strings with `*print-escape*` and `*print-readably*` set
+to `nil` (like `princ` or `format`'s `~A` directive). Has no effect if `write-headers` has already
+been called."
   (setf (reply-header-bytes reply) (babel:string-to-octets
                                       (calculate-header-string alist)
                                       :encoding :ascii)
@@ -98,6 +116,9 @@
   (appendf (reply-headers reply) alist))
 
 (defun write-headers (reply)
+  "Begins http response output, including writing the response line with the response status and all
+the headers that have been set for `reply`. This function should only be called once per `reply`. It
+is implicitly called as soon as any attempt is made to write to `reply` through other methods."
   (cond ((reply-headers-written-p reply)
          (warn "Headers already written."))
         (t
@@ -213,6 +234,10 @@
   (stream-write-sequence reply string start end))
 
 (defmethod close ((reply reply) &key abort)
+  "Ends the HTTP request associated with this `reply`. If the request headers have not been written
+and `abort` is `nil`, the reply headers are written to the user agent before closing the request. If
+`abort` is true, the associated request and its socket are immediately closed and nothing else is
+written to the user agent, and queued output will not be flushed before closing"
   (unless (reply-closed-p reply)
     (unless (or (reply-headers-written-p reply) abort)
       (write-headers reply))
