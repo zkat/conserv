@@ -39,11 +39,11 @@ whenever a connection is accepted.
 
 ```lisp
 (defmethod on-socket-error ((driver my-driver) (error something-harmless))
-  (format t \"~&Nothing to see here.~%\"))
+  (format t "~&Nothing to see here.~%"))
 
 (defmethod on-socket-error ((driver my-driver) (error blood-and-guts))
-  (format t \"~&Oh, the humanity!~%\")
-  (drop-connection error))"
+  (format t "~&Oh, the humanity!~%")
+  (drop-connection error))
 ```
 *[restart function]* `drop-connection &optional condition`
 
@@ -121,15 +121,15 @@ whenever a connection is accepted.
 *[function]* `socket-remote-name socket`
 
   Name of the remote host `socket` is connected to.
-  
+
 *[function]* `socket-remote-port socket`
 
   Remote port that `socket` is connected to.
-  
+
 *[function]* `socket-local-name socket`
 
   Local host name for `socket`'s connection.
-  
+
 *[function]* `socket-local-port socket`
 
   Local port for `socket`'s connection.
@@ -145,7 +145,7 @@ whenever a connection is accepted.
   called). This can be useful for throttling clients. If `timeout` is provided, it is interpreted as
   the number of seconds to wait before resuming reads on the socket. Has no effect if `socket`
   is already paused, although the resume timeout will still be activated.
-  
+
 *[function]* `socket-resume socket`
 
   Resumes reads on a paused `socket`. If `socket` was not already paused, this function has no
@@ -186,7 +186,7 @@ although this can safely be changed by `setf`ing `socket-driver` inside the `ser
 *[generic function]* `on-server-close driver`
 
   Event called after the server has been closed.
-  
+
 ### Server objects
 
 *[function]* `server-listen driver &key host port external-format-in external-format-out`
@@ -202,11 +202,11 @@ although this can safely be changed by `setf`ing `socket-driver` inside the `ser
 *[function]* `server-driver server`
 
   Driver object used to dispatch `server-event-driver` events on `server`.
-  
+
 *[accessor]* `server-external-format-in server`
 
   Default external-format-in for incoming connections.
-  
+
 *[accessor]* `server-external-format-out server`
 
   Default external-format-out for incoming connections.
