@@ -9,33 +9,31 @@ and web frameworks.
 generic functions dispatched by instances of `driver` classes in order to implement asynchronous
 events.
 
-An HTTP server primarily involves three objects:
+An HTTP server primarily involves two objects:
 
   * `*http-server*`, a server built on top of conserv.tcp:server which listens for requests on a
     given port
-  * `*request*`, which represents an incoming HTTP request. Requests hold general information such
-    as the request method, url, version, and request headers, as well as information about the
-    remote clients.
-  * `*reply*`, which represents a response to an HTTP request. Replies are used to respond to user
-    agents by writing outgoing headers and data. They can be closed to signal the end of an HTTP
-    request.
+  * `*request*`, which represents an individual HTTP request. Requests are used to access incoming
+    data, such as request method, url, version, and incoming headers, as well as outgoing data such
+    as outgoing headers. Requests are also writable character and byte streams, with any data
+    written to them getting sent as part of the HTTP response for that request.
     
 ## Features
 
 While the HTTP module is fairly minimal, it aims to provide a reasonably convenient interface for
 dealing with the HTTP protocol.
 
-  * *keep-alive support* - Requests and replies are independent of the underlying socket
+  * *keep-alive support* - Requests are independent of the underlying socket
     connection. `conserv.http` supports `keep-alive` (which is the default for `HTTP/1.1`
     connections), and will automatically wait for the next http request once the current one is
     closed. Keep-alive behavior is controlled both by the reported user-agent HTTP version, and by
     setting the outgoing header `:connection` to an appropriate value (`"close"` to close the
     connection, `"keep-alive"` to keep it open).
-  * *request/reply abstraction* - `conserv.http` creates a request/reply object pair for each
-    incoming HTTP request. These objects can be used to access various information about the
-    connecting user agent, as well as communicate with them. Replies are writable character and byte
-    streams, and automatically buffer data written to them for later output. Requests and replies
-    are also used to control the external format of incoming and outgoing data.
+  * *request abstraction* - `conserv.http` creates a request object for each incoming HTTP
+    request. This objects can be used to access various information about the connecting user agent,
+    as well as communicate with them. Requests are writable character and byte streams, and
+    automatically buffer data written to them for later output. Requests are also used to control
+    the external format of incoming and outgoing data.
   * *Upgrade/CONNECT support* - `conserv.http` understands the `CONNECT` request method and the
     `Upgrade` header as requests to switch protocols. An event, `on-request-ugrade`, can be used to
     convert the socket connection to an alternate protocol, such as `WebSockets`, while still
@@ -71,13 +69,12 @@ parsing the request url into its components.
 
 *[generic function]* `on-http-request driver`
 
-  Event called when an incoming HTTP request has been made. `*request*` and `*reply*` are both
-  available, at this point.
+  Event called when an incoming HTTP request has been made. `*request*` is available at this point.
   
 *[generic function]* `on-http-connection driver`
 
   Event called when a user-agent first connects to the server. `conserv.tcp:*socket*` contains the
-  incoming socket connection. `*request*` and `*reply*` are NOT bound at this point.
+  incoming socket connection. `*request*` is NOT bound at this point.
 
 *[generic function]* `on-http-close driver`
 
@@ -97,8 +94,8 @@ parsing the request url into its components.
   * `driver` -- An instance of a driver class. Used to dispatch `http-server-event-driver` events.
   * `host` -- Either a string representing a local IP address to bind to, or a pathname to use as a unix socket.
   * `port` -- Port to listen on. Should not be provided if `host` is a unix socket.
-  * `external-format-in` -- Default `external-format` for requests.
-  * `external-format-out` -- Default `external-format` for replies.
+  * `external-format-in` -- Default `external-format-in` for requests.
+  * `external-format-out` -- Default `external-format-out` for requests.
   
 *[accessor]* `http-server-driver http-server`
 
@@ -106,11 +103,11 @@ parsing the request url into its components.
 
 *[accessor]* `http-server-external-format-in http-server`
 
-  Default `external-format` for requests.
+  Default `external-format-in` for requests.
   
 *[accessor]* `http-server-external-format-out http-server`
 
-  Default `external-format` for replies.
+  Default `external-format-out` for requests.
 
 *[method]* `cl:close http-server &key abort`
 
@@ -137,8 +134,7 @@ The variable `*http-server*` is also available when these events are called.
 *[generic function]* `on-request-data driver data`
 
   Event called when `*request*` has received data from the user-agent. `data` will be automatically
-  encoded according to `(request-external-format *request*)`. `*reply*` is also available when this
-  event is invoked.
+  encoded according to `(request-external-format *request*)`.
 
 *[generic function]* `on-request-upgrade driver data`
 
@@ -167,45 +163,23 @@ The variable `*http-server*` is also available when these events are called.
 
   HTTP version as a string. (e.g. `"1.1"`, `"1.0"`)
   
-*[function]* `request-headers request`
+*[function]* `request-headers-in request`
 
-  An alist of `(name . value)` pairs. Header names are `:keywords`. All header values are strings.
+  An alist of `(name . value)` pairs representing the incoming headers sent by the client. Header
+  names are `:keywords`. All header values are strings.
   
 *[accessor]* `request-external-format request`
 
   External format used to encode incoming data. If `nil`, no encoding will be done, and
   `on-request-data` will receive arrays of `(unsigned-byte 8)` as its `data`.
 
-## Replies
-
-Replies are an abstraction over http responses. They are responsible for handling outgoing headers
-and data and cleanly marking the end of an HTTP request.
-
-### Events
-
-*[variable]* `*reply*`
-
-  During the execution of `reply-event-driver` events, this variable is bound to the associated
-  `reply` object. This variable is unbound outside of the scope of `reply-event-driver` events, with
-  the exception of certain `request`- and `http-server`-related events."
-  
-*[generic function]* `on-reply-close driver`
-
-  Event called after `*reply*` has been closed.
-  
-### Reply objects
-
-Reply objects implement both the character and byte output protocols of Gray Streams, meaning any
-stream output function can be used to send data to the http response through the `reply` object
-associated with the request.
-
-*[accessor]* `reply-status reply`
+*[accessor]* `request-response-status request`
 
   HTTP status code for this reply. Can be either a simple integer, such as `404`, or a cons of
   `(code . message-string)`, such as `(404 . "Not Found")`. If no message is present, only the
   code is sent to clients. Returns `(200 . "OK")` by default.
 
-*[function]* `reply-headers reply`
+*[function]* `request-headers-out request`
 
   An alist containing the outgoing headers. Header names can either be strings or
   `:keywords`. Values can be any printable lisp value. These headers should be set using the
@@ -220,29 +194,29 @@ associated with the request.
   * `(:content-length . integer)` -- Disables chunked encoding of outgoing data.
   * `(:transfer-encoding . "chunked")` -- The default. Enables chunked encoding of outgoing data.
 
-*[function]* `set-headers reply &rest headers-and-values`
+*[function]* `set-headers request &rest headers-and-values`
 
-  Sets `reply`'s outgoing headers. `headers` is a plist of `header-name` `header-value` pairs. On
+  Sets `request`'s outgoing headers. `headers` is a plist of `header-name` `header-value` pairs. On
   output, header values will be converted to strings with `*print-escape*` and `*print-readably*`
   set to `nil` (like `princ` or `format`'s `~A` directive). Has no effect if `write-headers` has
   already been called.
   
-*[function]* `write-headers reply`
+*[function]* `write-headers request`
 
   Begins http response output, including writing the response line with the response status and all
-  the headers that have been set for `reply`. This function should only be called once per
-  `reply`. It is implicitly called as soon as any attempt is made to write to `reply` through other
+  the headers that have been set for `request`. This function should only be called once per
+  `request`. It is implicitly called as soon as any attempt is made to write to `request` through other
   methods.
   
-*[accessor]* `reply-external-format reply`
+*[accessor]* `request-external-format-out request`
 
   The external format used to encode outgoing strings. If `nil`, attempting to write a string or
   character to the reply will signal an error -- only arrays of `(unsigned-byte 8)` will be
   allowed.
 
-*[method]* `cl:close reply &key abort`
+*[method]* `cl:close request &key abort`
 
-  Ends the HTTP request associated with this `reply`. If the request headers have not been written
-  and `abort` is `nil`, the reply headers are written to the user agent before closing the
+  Ends the HTTP request associated with this `request`. If the request headers have not been written
+  and `abort` is `nil`, the response headers are written to the user agent before closing the
   request. If `abort` is true, the associated request and its socket are immediately closed and
   nothing else is written to the user agent, and queued output will not be flushed before closing

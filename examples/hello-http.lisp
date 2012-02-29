@@ -4,7 +4,7 @@
   (:import-from #:conserv
                 #:with-event-loop)
   (:import-from #:conserv.http
-                #:*reply*
+                #:*request*
                 #:http-listen
                 #:set-headers
                 #:on-http-request
@@ -20,9 +20,9 @@
 (defclass hello-http () ())
 
 (defmethod on-http-request ((driver hello-http))
-  (set-headers *reply* :content-type "text/html")
-  (format *reply* "<h1>Hello, world!</h1>")
-  (close *reply*))
+  (set-headers *request* :content-type "text/html")
+  (format *request* "<h1>Hello, world!</h1>")
+  (close *request*))
 
 (defun start ()
   (with-event-loop ()
