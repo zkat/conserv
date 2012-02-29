@@ -73,7 +73,7 @@ unless otherwise noted.")
    ;; Outgoing data
    (response-status ((request a))
     :accessorp t
-    :documentation "HTTP response-status code for this request's response. Can be either a simple integer,
+    :documentation "HTTP status code for this request's response. Can be either a simple integer,
                     such as `404`, or a cons of `(code . message-string)`, such as `(404 . \"Not
                     Found\")`. If no message is present, only the code is sent to
                     clients. Returns `(200 . \"OK\")` by default.")
