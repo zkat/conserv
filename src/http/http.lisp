@@ -11,13 +11,13 @@
     :documentation "Event called when `*http-server*` has just started listening for connections.")
    (request ((driver a))
     :default-form nil
-    :documentation "Event called when an incoming HTTP request has been made. `*request*` and
-                    `*reply*` are both available, at this point.")
+    :documentation "Event called when an incoming HTTP request has been made. `*request*` is
+                    available at this point.")
    (connection ((driver a))
     :default-form nil
     :documentation "Event called when a user-agent first connects to the
                     server. `conserv.tcp:*socket*` contains the incoming socket
-                    connection. `*request*` and `*reply*` are NOT bound at this point.")
+                    connection. `*request*` is NOT bound at this point.")
    (close ((driver a))
     :default-form nil
     :documentation "Event called after the `*http-server*` and all its active connections have been
@@ -36,27 +36,41 @@
     :documentation "Conserv TCP server instance that this http server is running on top of.")
    (connections ((server a))
     :documentation "Internal -- hash table holding the current socket connections for this server,
-                    and their associated requests/replies.")
+                    and their associated requests.")
    (external-format-in ((server a))
     :accessorp t
-    :documentation "Default external-format for requests.")
+    :documentation "Default external-format-in for requests.")
    (external-format-out ((server a))
     :accessorp t
-    :documentation "Default external-format for replies.")
+    :documentation "Default external-format-out for requests.")
    (closed-p ((server a))
     :accessorp t
     :documentation "Internal -- whether the server has been closed."))
   (:prefix http-server-))
 
-(defmethod close ((req request) &key abort &aux (socket (request-socket req)))
-  (unless (eq :closed (request-state req))
-    (when abort
-      (setf (request-keep-alive-p req) nil))
-    (setf (request-state req) :closed)
-    (on-request-close (request-driver req))
-    (if (request-keep-alive-p *request*)
-        (new-request (request-http-server req) socket)
-        (close socket :abort abort))))
+(defmethod close ((request request) &key abort)
+  "Ends the HTTP request associated with this `request`. If the request headers have not been written
+and `abort` is `nil`, the request headers are written to the user agent before closing the request. If
+`abort` is true, the associated request and its socket are immediately closed and nothing else is
+written to the user agent, and queued output will not be flushed before closing"
+  (unless (request-closed-p request)
+    (let ((socket (request-socket request)))
+      (unless (or (request-headers-written-p request) abort)
+        (write-headers request))
+      (when (request-chunked-p request)
+        (write-sequence #.(make-array 5 :element-type '(unsigned-byte 8)
+                                      :initial-contents #(48 13 10 13 10))
+                        socket))
+      (when (member '(:connection . "close") (request-headers-out request)
+                    :test 'equalp)
+        (setf (request-keep-alive-p request) nil))
+      (setf (request-closed-p request) t
+            (request-state request) :closed)
+      (let ((*request* request))
+        (on-request-close (request-driver request)))
+      (if (request-keep-alive-p request)
+          (new-request (request-http-server request) socket)
+          (close socket :abort abort)))))
 
 (defclass http-server ()
   ((driver :initarg :driver :accessor http-server-driver)
@@ -73,15 +87,10 @@
                                    :socket socket
                                    :driver driver
                                    :http-server server
-                                   :external-format (http-server-external-format-in server)))
-         (*reply* (make-instance 'reply
-                               :socket socket
-                               :driver driver
-                               :request *request*
-                               :external-format (http-server-external-format-out server)
-                               :http-server server)))
+                                   :external-format-in (http-server-external-format-in server)
+                                   :external-format-out (http-server-external-format-out server))))
     (setf (gethash socket (http-server-connections server))
-          (cons *request* *reply*))))
+          *request*)))
 
 (defmethod on-server-connection ((server http-server) socket)
   (let ((*http-server* server)
@@ -93,18 +102,15 @@
                            &aux
                            (driver (http-server-driver server))
                            (socket *socket*))
-  (destructuring-bind (req . rep)
-      (gethash socket (http-server-connections server))
-    (let ((*request* req)
-          (*reply* rep)
-          (*http-server* server))
-      (case (request-state req)
-        (:headers
-         (parse-headers server driver data))
-        (:body
-         (on-request-data driver (if-let (format (request-external-format req))
-                                   (babel:octets-to-string data :encoding format)
-                                   data)))))))
+  (let ((*request* (gethash socket (http-server-connections server)))
+        (*http-server* server))
+    (case (request-state *request*)
+      (:headers
+       (parse-headers server driver data))
+      (:body
+       (on-request-data driver (if-let (format (request-external-format-in *request*))
+                                 (babel:octets-to-string data :encoding format)
+                                 data))))))
 
 (defparameter +100-continue+ #.(babel:string-to-octets (format nil "HTTP/1.1 100 Continue~a~a" +crlf-ascii+ +crlf-ascii+)))
 (defun parse-headers (server driver data)
@@ -114,7 +120,7 @@
       (setf (request-method *request*) (request-parser-method parser)
             (request-http-version *request*) (request-parser-http-version parser)
             (request-url *request*) (request-parser-url parser)
-            (request-headers *request*) (request-parser-headers parser))
+            (request-headers-in *request*) (request-parser-headers parser))
       ;; Connection: keep-alive is required in HTTP/1.0, but the default in HTTP/1.1
       ;; TODO - Probably shouldn't even support this for 0.9. This code also treats 0.9 as 1.1...
       (when (string-equal "1.0" (request-http-version *request*))
@@ -122,36 +128,36 @@
     (when rest
       (if donep
           (cond ((or
-                  (member :upgrade (request-headers *request*)
+                  (member :upgrade (request-headers-in *request*)
                           :test #'string-equal
                           :key #'car)
                   (string-equal "CONNECT" (request-method *request*)))
                  (upgrade-request *request* *socket* server driver rest))
                 (t
-                 (when (member '(:expect . "100-continue") (request-headers *request*)
+                 (when (member '(:expect . "100-continue") (request-headers-in *request*)
                                :test #'equalp)
                    #+nil(on-request-continue driver)
-                   (write-continue *reply*))
-                 (when (member '(:connection . "keep-alive") (request-headers *request*)
+                   (write-continue *request*))
+                 (when (member '(:connection . "keep-alive") (request-headers-in *request*)
                                :test #'equalp)
                    (setf (request-keep-alive-p *request*) t))
-                 (when (member '(:connection . "close") (request-headers *request*)
+                 (when (member '(:connection . "close") (request-headers-in *request*)
                                :test #'equalp)
                    (setf (request-keep-alive-p *request*) nil))
                  (setf (request-state *request*) :body)
                  (on-http-request driver)
                  (on-request-data driver
                                   (let ((rest-octets (babel:string-to-octets rest :encoding :ascii)))
-                                    (if-let (format (request-external-format *request*))
+                                    (if-let (format (request-external-format-in *request*))
                                       (babel:octets-to-string rest-octets :encoding format)
                                       rest-octets)))))
           (parse-headers server driver rest)))))
 
 (defmethod on-request-continue ((driver t))
-  (write-continue *reply*))
+  (write-continue *request*))
 
-(defun write-continue (reply)
-  (write-sequence +100-continue+ (reply-socket reply)))
+(defun write-continue (request)
+  (write-sequence +100-continue+ (request-socket request)))
 
 (defun upgrade-request (request socket server driver rest)
   ;; HACK - This is terrible. Because CLOSE will close the underlying socket if request-keep-alive-p
@@ -181,9 +187,9 @@
   "Implementation of `cl:close` for `http-server`. Shuts down all active connections and then shuts
 down the http server itself, making the port available for listening again. If `abort` is true, all
 sockets are immediately shut down without waiting for any pre-shutdown cleanup to complete."
-  (loop for (request . reply) in (hash-table-values (http-server-connections server))
+  (loop for request in (hash-table-values (http-server-connections server))
      do (setf (request-keep-alive-p request) nil)
-       (close reply :abort abort))
+       (close request :abort abort))
   (clrhash (http-server-connections server))
   (setf (http-server-closed-p server) t)
   (close (http-server-server server) :abort abort)
@@ -201,8 +207,8 @@ object.
   * `driver` -- An instance of a driver class. Used to dispatch `http-server-event-driver` events.
   * `host` -- Either a string representing a local IP address to bind to, or a pathname to use as a unix socket.
   * `port` -- Port to listen on. Should not be provided if `host` is a unix socket.
-  * `external-format-in` -- Default `external-format` for requests.
-  * `external-format-out` -- Default `external-format` for replies."
+  * `external-format-in` -- Default `external-format-in` for requests.
+  * `external-format-out` -- Default `external-format-out` for requests."
 
   (let ((http-server (make-instance 'http-server
                                     :driver driver

@@ -15,17 +15,13 @@
 
    #:request-method
    #:request-url
-   #:request-headers
+   #:request-headers-in
    #:request-http-version
-   #:request-external-format
+   #:request-external-format-in
 
-   ;; Replies
-   #:*reply*
-   #:on-reply-close
-
-   #:reply-status
-   #:reply-headers
-   #:reply-external-format
+   #:request-response-status
+   #:request-headers-out
+   #:request-external-format-out
 
    #:set-headers
    #:write-headers
