@@ -323,6 +323,13 @@
                (incf index))
        finally (return buffer))))
 
+;; NOTE - Since we delay conversion of socket output, we have to make sure that if the external
+;; format is changed, anything that was written to the socket is encoded using the format that was
+;; present when the write happened.
+(defmethod (setf socket-external-format-out) :before (new-value (socket socket))
+  (declare (ignore new-value))
+  (socket-enqueue (coalesce-outputs socket) socket))
+
 (defun ensure-write-buffer (socket)
   (or (socket-write-buffer socket)
       (setf (socket-write-buffer-offset socket) 0
