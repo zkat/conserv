@@ -180,7 +180,7 @@ written to the user agent, and queued output will not be flushed before closing"
 (defmethod on-server-close ((server http-server))
   (unless (http-server-closed-p server)
     (close server :abort t)))
-#+nil(defmethod on-socket-error ((server http-server) error)
+(defmethod on-socket-error ((server http-server) error)
   (on-http-error (http-server-driver server) error))
 
 (defmethod close ((server http-server) &key abort)
