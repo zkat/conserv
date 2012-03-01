@@ -209,7 +209,6 @@ object.
   * `port` -- Port to listen on. Should not be provided if `host` is a unix socket.
   * `external-format-in` -- Default `external-format-in` for requests.
   * `external-format-out` -- Default `external-format-out` for requests."
-
   (let ((http-server (make-instance 'http-server
                                     :driver driver
                                     :external-format-in external-format-in
