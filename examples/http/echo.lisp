@@ -6,7 +6,8 @@
                 #:*request*
                 #:http-listen
                 #:set-headers
-                #:on-http-request))
+                #:on-http-request
+                #:on-request-data))
 (cl:in-package #:conserv.examples.http.echo)
 
 (defclass echo () ())
