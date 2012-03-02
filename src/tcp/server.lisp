@@ -78,6 +78,10 @@
   (let ((*server* server))
     (on-server-close (server-driver server))))
 
+(defun server-paused-p (server)
+  "Returns true when `server` is not currently accepting new connections."
+  (socket-paused-p (server-socket server)))
+
 (defun server-pause (server &key timeout)
   "Pauses read events for `server`, preventing it from accepting new connections. While paused, all
    `socket`s already connected to `server` continue to work normally, but new connections will not

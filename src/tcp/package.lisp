@@ -45,5 +45,6 @@
    #:server-external-format-out
    #:server-list-clients
    #:server-count-clients
+   #:server-paused-p
    #:server-pause
    #:server-resume))
