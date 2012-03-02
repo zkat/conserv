@@ -13,6 +13,8 @@
    #:on-request-upgrade
    #:on-request-close
 
+   #:request-remote-name
+   #:request-remote-port
    #:request-method
    #:request-url
    #:request-headers-in

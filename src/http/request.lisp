@@ -111,6 +111,16 @@ unless otherwise noted.")
   (:prefix request-))
 
 ;;;
+;;; Host/port info
+;;;
+(defun request-remote-name (request)
+  "Name of the remote host `request` is coming from."
+  (socket-remote-name (request-socket request)))
+(defun request-remote-port (request)
+  "Remote port that `request` is coming from."
+  (socket-remote-port (request-socket request)))
+
+;;;
 ;;; Headers
 ;;;
 (defparameter +http-1.1+ (babel:string-to-octets "HTTP/1.1 " :encoding :ascii))

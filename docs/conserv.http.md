@@ -151,6 +151,14 @@ The variable `*http-server*` is also available when these events are called.
 
 ### Request objects
 
+*[function]* `request-remote-name request`
+
+  Name of the remote host `request` is coming from.
+
+*[function]* `request-remote-name request`
+
+  Remote port that `request` is coming from.
+
 *[function]* `request-method request`
 
   Request method as a string (e.g. `"GET"`, `"POST"`, `"CONNECT"`)
