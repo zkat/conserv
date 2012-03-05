@@ -26,7 +26,7 @@
               collect (expand-in-tree item source target predicate)))
           (t tree))))
 
-(defmacro define-parser-stages ((parser-state-var) name &rest stages)
+(defmacro define-parser-stages ((parser-state-var header-info-var buffer-var) name &rest stages)
   (let ((expanded-stages nil))
     (loop for stage in (reverse stages)
        do (loop for es in expanded-stages ;; does this direction induce continuously expanded stages? (it should be irrelevant, yet still)
@@ -49,7 +49,12 @@
                    `(defun ,(first stage) (,parser-state-var)
                       (declare (type parser-state ,parser-state-var)
                                (ignorable ,parser-state-var))
-                      ,@(rest stage)))
+                      (let ((,header-info-var (parser-state-header-info ,parser-state-var))
+                            (,buffer-var (parser-state-buffer ,parser-state-var)))
+                        (declare (ignorable ,header-info-var ,buffer-var)
+                                 (type header-info ,header-info-var)
+                                 (type multi-buffer ,buffer-var))
+                       ,@(rest stage))))
                  stages))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -82,7 +87,8 @@
          (ftype (function (multi-buffer fixnum function) character) char-for-index)
          (ftype (function (multi-buffer function) character) current-char peek-forward)
          (ftype (function (multi-buffer fixnum function) character) n-peek-forward)
-         (ftype (function (multi-buffer)) mark-buffer buffer-forward buffer-unused-available-content)
+         (ftype (function (multi-buffer)) mark-buffer buffer-forward)
+         (ftype (function (multi-buffer) simple-string) buffer-unused-available-content)
          (ftype (function (multi-buffer fixnum)) n-buffer-forward)
          (ftype (function (multi-buffer function) simple-string) copy-marked-region))
 
@@ -109,16 +115,17 @@
         (leftover-index (- index)))
     (declare (type list lists-to-append)
              (type fixnum leftover-index))
-    (loop named listwalker
-       for string of-type simple-string in (multi-buffer-pstrings buffer)
+    (loop for string of-type simple-string in (multi-buffer-pstrings buffer)
        for stringlength = (length (the simple-string string))
        if (> stringlength leftover-index)
        do (progn (push leftover-index lists-to-append)
              (decf leftover-index stringlength))
        else
-       do (return-from listwalker
-            (apply #'concatenate 'string (nreverse (cons (subseq string (- stringlength leftover-index))
-                                                         (nreverse lists-to-append))))))))
+       do (return-from previous-buffer-content-from-index
+            (the simple-string
+              (apply #'concatenate 'string (nreverse (cons (subseq string (- stringlength leftover-index))
+                                                           (nreverse lists-to-append))))))))
+  "") ; here to make sbcl's type system happy (case shouldn't occur)
 
 (defun char-for-index (buffer index callback)
   "yields the character of <buffer> at <index>"
@@ -186,9 +193,10 @@
                  (1+ (multi-buffer-index buffer))))
         ((and (< (multi-buffer-mark buffer) 0)
             (>= (multi-buffer-index buffer) 0))
-         (concatenate 'string
-                      (previous-buffer-content-from-index buffer (multi-buffer-mark buffer))
-                      (subseq (multi-buffer-string buffer) 0 (1+ (multi-buffer-index buffer)))))
+         (the simple-string
+           (concatenate 'string
+                        (previous-buffer-content-from-index buffer (multi-buffer-mark buffer))
+                        (subseq (multi-buffer-string buffer) 0 (1+ (multi-buffer-index buffer))))))
         (T ; both are negative
          (let ((upto-mark (previous-buffer-content-from-index buffer (multi-buffer-mark buffer))))
            (declare (type simple-string upto-mark))
@@ -197,22 +205,20 @@
 (defun forward-buffer-below (buffer &key elements not-followed-by restart-callback)
   "forwards the buffer until the index is at a position after which each of the values of <elements> are listed in sequence, followed by neither character of <not-followed-by>."
   (declare (type multi-buffer buffer)
-           (type list elements)
-           (type list not-followed-by)
+           (type simple-string elements)
+           (type simple-string not-followed-by)
            (type function restart-callback))
   (let ((bound (1+ (length elements))))
     (loop until (and (block elements-correct-p
                   (loop for n of-type fixnum from 1
-                     for element of-type character in elements
+                     for element of-type character across elements
                      unless (eql (n-peek-forward buffer n restart-callback)
                                  element)
                      do (return-from elements-correct-p nil))
                   T)
                 (not (find (n-peek-forward buffer bound restart-callback)
                          not-followed-by
-                         :test (lambda (a b)
-                                 (declare (type character a b))
-                                 (eql a b)))))
+                         :test #'eql)))
        do (buffer-forward buffer))))
 
 (defun forward-buffer-while-not (buffer char callback)
@@ -255,89 +261,89 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parsing the header
-(define-parser-stages (parser-state)
+(define-parser-stages (parser-state header-info buffer)
     parse-request-line
-  (:init (case (char-upcase (current-char (parser-state-buffer parser-state) ;; this matching is fast, but it isn't pretty when things go haywire.
+  (:init (case (char-upcase (current-char buffer ;; this matching is fast, but it isn't pretty when things go haywire.
                                           (stage-func :init)))
-           (#\P (buffer-forward (parser-state-buffer parser-state))
+           (#\P (buffer-forward buffer)
                 (call-stage :post-or-put))
-           (#\H (setf (header-info-request-type (parser-state-header-info parser-state))
+           (#\H (setf (header-info-request-type header-info)
                       :head)
-                (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "HEAD"))))
-           (#\G (setf (header-info-request-type (parser-state-header-info parser-state))
+                (n-buffer-forward buffer #.(1+ (length "HEAD"))))
+           (#\G (setf (header-info-request-type header-info)
                       :get)
-                (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "GET"))))
-           (#\C (setf (header-info-request-type (parser-state-header-info parser-state))
+                (n-buffer-forward buffer #.(1+ (length "GET"))))
+           (#\C (setf (header-info-request-type header-info)
                       :connect)
-                (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "CONNECT"))))
-           (#\D (setf (header-info-request-type (parser-state-header-info parser-state))
+                (n-buffer-forward buffer #.(1+ (length "CONNECT"))))
+           (#\D (setf (header-info-request-type header-info)
                       :delete)
-                (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "DELETE"))))
+                (n-buffer-forward buffer #.(1+ (length "DELETE"))))
            (T (error "i don't know this request type. HEAD GET DELETE POST and PUT are supported.")))
          (call-stage :request-path))
-  (:post-or-put (case (char-upcase (current-char (parser-state-buffer parser-state)
+  (:post-or-put (case (char-upcase (current-char buffer
                                                  (stage-func :post-or-put)))
-                  (#\O (n-buffer-forward (parser-state-buffer parser-state) #.(length "POST")))
-                  (#\U (n-buffer-forward (parser-state-buffer parser-state) #.(length "PUT")))
+                  (#\O (n-buffer-forward buffer #.(length "POST")))
+                  (#\U (n-buffer-forward buffer #.(length "PUT")))
                   (T (error "i don't know this request type. HEAD GET DELETE POST and PUT are supported.")))
                 (call-stage :request-path))
   (:request-path ;; once the request-path is entered, the buffer's current character must be the first character of the path
    (call-stage :request-path-init)
    (call-stage :request-path-discover))
-  (:request-path-init (mark-buffer (parser-state-buffer parser-state)))
-  (:request-path-discover (forward-buffer-while-not (parser-state-buffer parser-state) #\Space
+  (:request-path-init (mark-buffer buffer))
+  (:request-path-discover (forward-buffer-while-not buffer #\Space
                                                     (stage-func :request-path-discover))
-                          (setf (header-info-path (parser-state-header-info parser-state))
-                                (copy-marked-region (parser-state-buffer parser-state)
+                          (setf (header-info-path header-info)
+                                (copy-marked-region buffer
                                                     (stage-func :error))) ;; we have just discovered up to the character /after/ us, so we can't yield an error
-                          (n-buffer-forward (parser-state-buffer parser-state) 2)
+                          (n-buffer-forward buffer 2)
                           (call-stage :http-discover-version))
-  (:http-discover-version (n-buffer-forward (parser-state-buffer parser-state) #.(length "HTTP/1."))
+  (:http-discover-version (n-buffer-forward buffer #.(length "HTTP/1."))
                           (call-stage :http-discover-version-nr))
-  (:http-discover-version-nr (case (current-char (parser-state-buffer parser-state)
+  (:http-discover-version-nr (case (current-char buffer
                                                  (stage-func :http-discover-version-nr))
-                               (#\0 (setf (header-info-http-version (parser-state-header-info parser-state))
+                               (#\0 (setf (header-info-http-version header-info)
                                           :http-1.0))
-                               (#\1 (setf (header-info-http-version (parser-state-header-info parser-state))
+                               (#\1 (setf (header-info-http-version header-info)
                                           :http-1.1))
-                               (T (error "HTTP version header not understood, it returned ~A" (current-char (parser-state-buffer parser-state) (stage-func :error)))))
-                             (n-buffer-forward (parser-state-buffer parser-state)
+                               (T (error "HTTP version header not understood, it returned ~A" (current-char buffer (stage-func :error)))))
+                             (n-buffer-forward buffer
                                                #. (1+ (length (list #\Return #\Linefeed))))
                              (call-parser-stage parse-header-lines :init  parser-state))
   (:error (error "the header parser made an error.  please reggister the request and send a bug-report")))
 
-(define-parser-stages (parser-state)
+(define-parser-stages (parser-state header-info buffer)
     parse-header-lines
-  (:init (mark-buffer (parser-state-buffer parser-state))
-         (if (and (eql #\Return (current-char (parser-state-buffer parser-state) (stage-func :init)))
-                (eql #\Newline (peek-forward (parser-state-buffer parser-state) (stage-func :init))))
-             (progn (n-buffer-forward (parser-state-buffer parser-state) 2)
+  (:init (mark-buffer buffer)
+         (if (and (eql #\Return (current-char buffer (stage-func :init)))
+                (eql #\Newline (peek-forward buffer (stage-func :init))))
+             (progn (n-buffer-forward buffer 2)
                 (call-stage :end-header-parsing))
-             (progn (mark-buffer (parser-state-buffer parser-state))
+             (progn (mark-buffer buffer)
                 (call-stage :copy-header-keyword))))
-  (:copy-header-keyword (forward-buffer-while-not (parser-state-buffer parser-state) #\:
+  (:copy-header-keyword (forward-buffer-while-not buffer #\:
                                                   (stage-func :copy-header-keyword))
-                        (push (cons (string-upcase (copy-marked-region (parser-state-buffer parser-state)
+                        (push (cons (string-upcase (copy-marked-region buffer
                                                                        (stage-func :error))) ; we can't reach this, forward-buffer-while-not must have read all parts of the buffer we've used so far
                                     nil)
-                              (header-info-headers (parser-state-header-info parser-state)))
+                              (header-info-headers header-info))
                         (call-stage :read-header-value-init))
-  (:read-header-value-init (buffer-forward (parser-state-buffer parser-state)) ; forward the #\:
-                           (mark-buffer (parser-state-buffer parser-state))
+  (:read-header-value-init (buffer-forward buffer) ; forward the #\:
+                           (mark-buffer buffer)
                            (call-stage :read-header-value))
-  (:read-header-value (forward-buffer-below (parser-state-buffer parser-state)
-                                            :elements (list #\Return #\Linefeed)
-                                            :not-followed-by (list #\Space #\Tab)
+  (:read-header-value (forward-buffer-below buffer
+                                            :elements #.(coerce #(#\Return #\Linefeed) 'simple-string)
+                                            :not-followed-by #.(coerce #(#\Space #\Tab) 'simple-string)
                                             :restart-callback (stage-func :read-header-value))
-                      (setf (cdr (first (header-info-headers (parser-state-header-info parser-state))))
-                            (copy-marked-region (parser-state-buffer parser-state)
+                      (setf (cdr (first (header-info-headers header-info)))
+                            (copy-marked-region buffer
                                                 (stage-func :error)))
-                      (n-buffer-forward (parser-state-buffer parser-state)
+                      (n-buffer-forward buffer
                                         3)
                       (call-stage :init))
   (:end-header-parsing (values T
-                               (parser-state-header-info parser-state)
-                               (buffer-unused-available-content (parser-state-buffer parser-state))))
+                               header-info
+                               (buffer-unused-available-content buffer)))
   (:error (error "something odd, impossible happened whilst parsing the header.  this is probably due to a bug in the implementation of the header parsing.")))
 
 (defparameter +crlf-ascii+ #.(make-array 2 :element-type 'character :initial-contents '(#\return #\linefeed)))
