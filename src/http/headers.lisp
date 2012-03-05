@@ -235,7 +235,7 @@
 (defstruct parser-state
   "A parser for the state itself"
   (buffer (make-multi-buffer) :type multi-buffer)
-  (header-info (make-instance 'header-info) :type header-info)
+  (header-info (make-header-info) :type header-info)
   (parser-stage-function (parser-stage parse-request-line :init)))
 
 (defun make-request-parser ()
@@ -251,7 +251,7 @@
     (buffer-lacks-data (bld)
       (setf (parser-state-parser-stage-function parser-state)
             (recover-function bld))
-      (values nil parser-state ""))))
+      (values nil parser-state nil))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parsing the header
@@ -306,16 +306,16 @@
 (define-parser-stages (parser-state)
     parse-header-lines
   (:init (mark-buffer (parser-state-buffer parser-state))
-         (if (and (eql #\Return (peek-forward (parser-state-buffer parser-state) (stage-func :init)))
-                (eql #\Newline (n-peek-forward (parser-state-buffer parser-state) 2 (stage-func :init))))
+         (if (and (eql #\Return (current-char (parser-state-buffer parser-state) (stage-func :init)))
+                (eql #\Newline (peek-forward (parser-state-buffer parser-state) (stage-func :init))))
              (progn (n-buffer-forward (parser-state-buffer parser-state) 2)
                 (call-stage :end-header-parsing))
              (progn (mark-buffer (parser-state-buffer parser-state))
                 (call-stage :copy-header-keyword))))
   (:copy-header-keyword (forward-buffer-while-not (parser-state-buffer parser-state) #\:
                                                   (stage-func :copy-header-keyword))
-                        (push (cons (copy-marked-region (parser-state-buffer parser-state)
-                                                        (stage-func :error))  ; we can't reach this, forward-buffer-while-not must have read all parts of the buffer we've used so far
+                        (push (cons (string-upcase (copy-marked-region (parser-state-buffer parser-state)
+                                                                       (stage-func :error))) ; we can't reach this, forward-buffer-while-not must have read all parts of the buffer we've used so far
                                     nil)
                               (header-info-headers (parser-state-header-info parser-state)))
                         (call-stage :read-header-value-init))
@@ -431,3 +431,16 @@
                                     "Quux: Hurr" +crlf-ascii+
                                     +crlf-ascii+)))
     (feed-parser (make-request-parser) request-chunk)))
+
+(declaim (ftype (function (header-info string-designator) (or null simple-string)) request-header))
+(defun request-header (header-info header)
+  (let ((match (find (string header) (header-info-headers header-info) :key #'car :test #'string=)))
+    (when match (cdr match))))
+
+;; methods for http.lisp
+(defun request-parser-method (header-info)
+  (header-info-request-type header-info))
+(defun request-parser-http-version (header-info)
+  (header-info-http-version header-info))
+(defun request-parser-url (header-info)
+  (header-info-path header-info))
