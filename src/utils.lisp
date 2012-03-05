@@ -1,4 +1,15 @@
-(in-package #:conserv)
+(cl:defpackage #:conserv.utils
+  (:use #:cl #:alexandria)
+  (:export #:make-queue
+           #:enqueue
+           #:dequeue
+           #:queue-empty-p
+           #:dequeue-all
+           #:defprotocol
+           #:*default-external-format*))
+(cl:in-package #:conserv.utils)
+
+(defvar *default-external-format* :utf-8)
 
 ;; Utils
 (defun make-queue () (cons nil nil))

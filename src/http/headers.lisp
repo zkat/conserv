@@ -267,6 +267,9 @@
            (#\G (setf (header-info-request-type (parser-state-header-info parser-state))
                       :get)
                 (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "GET"))))
+           (#\C (setf (header-info-request-type (parser-state-header-info parser-state))
+                      :connect)
+                (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "CONNECT"))))
            (#\D (setf (header-info-request-type (parser-state-header-info parser-state))
                       :delete)
                 (n-buffer-forward (parser-state-buffer parser-state) #.(1+ (length "DELETE"))))
@@ -337,91 +340,6 @@
                                (buffer-unused-available-content (parser-state-buffer parser-state))))
   (:error (error "something odd, impossible happened whilst parsing the header.  this is probably due to a bug in the implementation of the header parsing.")))
 
-;;;;;;;;;;;;;;;;;;
-;;;; previous code
-;;;;;;;;;;;;;;;;;;
-
-
-
-
-;; (defstruct request-parser
-;;   buffer
-;;   (state :request-line)
-;;   method
-;;   url
-;;   http-version
-;;   headers)
-
-;; (define-condition request-parser-error (error) ())
-
-;; (defun feed-parser (parser data)
-;;   (case (request-parser-state parser)
-;;     (:request-line
-;;      (handle-request-line parser data))
-;;     (:header
-;;      (handle-header parser data))
-;;     (:done
-;;      (values t parser data))))
-
-;; (defun fill-buffer (parser data)
-;;   (setf (request-parser-buffer parser)
-;;         (if-let (buffer (request-parser-buffer parser))
-;;           (concatenate 'string buffer data)
-;;           data)))
-
-;; (defparameter *request-line-regex*
-;;   (cl-ppcre:create-scanner "(\\w+)\\s+([^\\s]+)\\s+(?:HTTP/(\\d\\.\\d))?"
-;;                            :case-insensitive-mode t))
-
-;; (defun handle-request-line (parser data)
-;;   (let ((buffer (fill-buffer parser data)))
-;;     (if-let (match (search '(#\return #\linefeed) buffer))
-;;       (let ((request-line (subseq buffer 0 match))
-;;             (rest (subseq buffer (+ match 2))))
-;;         (multiple-value-bind (method url version)
-;;             (parse-request-line request-line)
-;;           (setf (request-parser-method parser) method
-;;                 (request-parser-url parser) url
-;;                 (request-parser-http-version parser) version
-;;                 (request-parser-buffer parser) nil
-;;                 (request-parser-state parser) :header)
-;;           (feed-parser parser rest)))
-;;       (values nil parser nil))))
-
-;; (defun parse-request-line (line)
-;;   (cl-ppcre:register-groups-bind (method url version)
-;;       (*request-line-regex* line)
-;;     (values method url (or version "0.9"))))
-
-;; (defun whitespacep (char)
-;;   (member char '(#\space #\tab)))
-
-;; (defparameter *header-regex* (cl-ppcre:create-scanner "([A-Za-z0-9\\-]+):\\s+(.*)"))
-
-;; (defun handle-header (parser data)
-;;   (let ((buffer (fill-buffer parser data)))
-;;     (if-let (match (search '(#\return #\linefeed) buffer))
-;;       (progn
-;;         (setf (request-parser-buffer parser) nil)
-;;         (when (eql 0 match)
-;;           (setf (request-parser-state parser) :done)
-;;           (nreversef (request-parser-headers parser))
-;;           (return-from handle-header (feed-parser parser (subseq buffer (+ match 2)))))
-;;         (let ((header-line (subseq buffer 0 match))
-;;               (rest (subseq buffer (+ match 2))))
-;;           (cond ((whitespacep (elt header-line 0))
-;;                  (let ((header-cons (car (request-parser-headers parser))))
-;;                    (setf (cdr header-cons) (concatenate 'string (cdr header-cons)
-;;                                                         " "
-;;                                                         (string-trim '(#\space #\tab) header-line))))
-;;                  (feed-parser parser rest))
-;;                 (t
-;;                  (cl-ppcre:register-groups-bind (name value)
-;;                      (*header-regex* header-line)
-;;                    (push (cons (intern (string-upcase name) :keyword) value) (request-parser-headers parser)))
-;;                  (feed-parser parser rest)))))
-;;       (values nil parser nil))))
-
 (defparameter +crlf-ascii+ #.(make-array 2 :element-type 'character :initial-contents '(#\return #\linefeed)))
 (defun test ()
   (let ((request-chunk (concatenate 'string
@@ -432,9 +350,9 @@
                                     +crlf-ascii+)))
     (feed-parser (make-request-parser) request-chunk)))
 
-(declaim (ftype (function (header-info string-designator) (or null simple-string)) request-header))
-(defun request-header (header-info header)
-  (let ((match (find (string header) (header-info-headers header-info) :key #'car :test #'string=)))
+(declaim (ftype (function (list string-designator) (or null simple-string)) request-header))
+(defun request-header (header-info-headers header)
+  (let ((match (find (string header) header-info-headers :key #'car :test #'string=)))
     (when match (cdr match))))
 
 ;; methods for http.lisp
@@ -444,3 +362,5 @@
   (header-info-http-version header-info))
 (defun request-parser-url (header-info)
   (header-info-path header-info))
+(defun request-parser-headers (header-info)
+  (header-info-headers header-info))

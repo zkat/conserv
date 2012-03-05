@@ -1,49 +1,64 @@
-(in-package #:conserv)
+(in-package #:conserv.tcp)
 
 (deftype octet ()
   '(unsigned-byte 8))
 
 ;; Events
 (defvar *socket*)
+(setf (documentation '*socket* 'variable)
+      "During execution of socket events, this is bound to the `socket` object associated with the
+       current event. This variable is unbound outside the scope of `socket-event-driver` events.")
+
 (defprotocol socket-event-driver (a)
   ((error (driver error)
-    :default-form #+nil(drop-connection error) nil
-    :documentation "Event called when *SOCKET* has experienced some error. ERROR is the actual
+    :default-form nil
+    :documentation "Event called when `*socket*` has experienced some error. `error` is the actual
                     condition. This event is executed immediately before the client is shut down.
                     By default, this event simply drops the client connection.
 
-                    The fact that ON-SOCKET-ERROR receives the actual condition allows a sort of
+                    The fact that `on-socket-error` receives the actual condition allows a sort of
                     condition handling by specializing both the driver and the condition. For
                     example:
-                    (defmethod on-socket-error ((driver my-driver) socket (error end-of-file))
-                      (format t \"~&Got an end of file.~%\")
+                    ```lisp
+                    (defmethod on-socket-error ((driver my-driver) (error something-harmless))
+                      (format t \"~&Nothing to see here.~%\"))
+
+                    (defmethod on-socket-error ((driver my-driver) (error blood-and-guts))
+                      (format t \"~&Oh, the humanity!~%\")
                       (drop-connection error))
-                    (defmethod on-socket-error ((driver my-driver) socket (error blood-and-guts))
-                      (format t \"~&Oh, the humanity! Let the error kill the whole server :(~%\"))")
+                    ```")
+   (end-of-file (driver)
+    :default-form nil
+    :documentation "Event called when an EOF has been received while reading from `*socket*`")
    (connect ((driver a))
     :default-form nil
-    :documentation "Event called immediately after a successful SOCKET-CONNECT.")
+    :documentation "Event called immediately after a successful `socket-connect`.")
    (data ((driver a) data)
     :default-form nil
-    :documentation "Event called when *SOCKET* has received some new DATA.")
+    :documentation "Event called when `*socket*` has received some new
+                    `DATA`. If `(socket-external-format-in *socket*)` is `nil`, `data` will by an
+                    array of `(unsigned-byte 8)`. Otherwise, it will be used to encode the incoming
+                    data before passing it to `on-socket-data`")
    (close ((driver a))
     :default-form nil
-    :documentation "Event called when *SOCKET* has been disconnected.")
+    :documentation "Event called when `*socket*` has been disconnected.")
    (output-empty ((driver a))
     :default-form nil
-    :documentation "Event called when *SOCKET*'s output queue is empty."))
+    :documentation "Event called when `*socket*`'s output queue is empty."))
   (:prefix on-socket-)
   (:documentation "Defines the base API for standard sockets."))
 
 (defun drop-connection (&optional condition)
-  "Can only be called within the scope of ON-SOCKET-ERROR."
+  "Drops the current connection and allows execution to continue. Can only be called within the
+   scope of ON-SOCKET-ERROR."
   (let ((r (find-restart 'drop-connection condition)))
     (when r (invoke-restart r))))
 
 ;; Base socket protocol
 (defprotocol socket (a)
   ((driver ((socket a))
-    :documentation "Driver object used to dispatch SOCKET's events.")
+    :accessorp t
+    :documentation "Driver object used to dispatch `socket`'s events.")
    (server ((socket a))
     :accessorp t
     :documentation "Holds the associated server object if this socket was accepted by a server.")
@@ -59,16 +74,22 @@
    ;; TODO - Make it an accessor so buffer sizes can be dynamically changed by users.
    #+nil(buffer-size :accessor)
    (bytes-read ((socket a))
-    :accessorp t)
+    :accessorp t
+    :documentation "Total bytes successfully read by `socket` so far.")
    (bytes-written ((socket a))
-    :accessorp t)
+    :accessorp t
+    :documentation "Total bytes successfully written to `socket`. Note that this is incremented only
+                    after the data has been written to the file descriptor, not after each call to a
+                    stream writing function.")
    (external-format-in ((socket a))
-    :documentation "External format to use when converting incoming octets into characters. If NIL,
-                    no encoding will be done on incoming data, and ON-SOCKET-DATA will receive the
-                    raw (unsigned-byte 8) data.")
+    :accessorp t
+    :documentation "External format to use when converting incoming octets into characters. If `nil`,
+                    no encoding will be done on incoming data, and `on-socket-data` will receive the
+                    raw `(unsigned-byte 8)` data.")
    (external-format-out ((socket a))
-    :documentation "External format to use for outgoing octets and strings. If NIL, an error is
-                    signaled if an attempt is made to write a string to the socket.")
+    :accessorp t
+    :documentation "External format to use for outgoing octets and strings. If `nil`, an error is
+                    signaled if an attempt is made to write a string to `socket`.")
    (close-after-drain-p ((socket a))
     :accessorp t
     :documentation "When true, the internal socket will be closed once the socket's output buffer is
@@ -82,12 +103,11 @@
   (:prefix socket-))
 
 ;;; Implementation
-(defvar *default-external-format* :utf-8)
 (defvar *max-buffer-size* 16384)
 (defclass socket (trivial-gray-stream-mixin
                   fundamental-binary-output-stream
                   fundamental-character-output-stream)
-  ((driver :initarg :driver :reader socket-driver)
+  ((driver :initarg :driver :accessor socket-driver)
    (server :initform nil :accessor socket-server)
    (internal-socket :accessor socket-internal-socket)
    (read-buffer :reader socket-read-buffer)
@@ -96,8 +116,8 @@
    (write-buffer-offset :initform 0 :accessor socket-write-buffer-offset)
    (bytes-read :initform 0 :accessor socket-bytes-read)
    (bytes-written :initform 0 :accessor socket-bytes-written)
-   (external-format-in :initarg :external-format-in :reader socket-external-format-in)
-   (external-format-out :initarg :external-format-out :reader socket-external-format-out)
+   (external-format-in :initarg :external-format-in :accessor socket-external-format-in)
+   (external-format-out :initarg :external-format-out :accessor socket-external-format-out)
    (close-after-drain-p :initform nil :accessor socket-close-after-drain-p)
    (readingp :initform nil :accessor socket-reading-p)
    (writingp :initform nil :accessor socket-writing-p)))
@@ -122,11 +142,14 @@
     (start-writes socket)))
 
 ;;; Gray streams implementation
-(defmethod stream-write-sequence ((socket socket) sequence start end &key)
-  (socket-enqueue (if (and (eq start 0)
-                           (eq end (length sequence)))
+(defmethod stream-write-sequence ((socket socket) sequence start end &key
+                                  &aux (length (length sequence)))
+  (socket-enqueue (if (and (or (null start)
+                               (eq start 0))
+                           (or (null end)
+                               (eq end length)))
                       sequence
-                      (subseq sequence (or start 0) (or end (length sequence))))
+                      (subseq sequence (or start 0) (or end length)))
                   socket))
 (defmethod stream-line-column ((socket socket))
   ;; TODO
@@ -166,6 +189,13 @@
                        (buffer-size *max-buffer-size*)
                        (external-format-in *default-external-format*)
                        (external-format-out *default-external-format*))
+  "Establishes a TCP connection with `host`. If successful, returns a `socket` object.
+
+   * `driver` -- an instance of a driver class that will be used to dispatch `socket-event-driver` events.
+   * `host` -- Either a string representing a remote IP address or hostname, or a pathname to a local IPC socket.
+   * `port` -- Port number to connect to. Should not be provided if `host` is an IPC socket.
+   * `external-format-in` -- Either an external format or `nil`. Used for determining the encoding of data passed to `on-socket-data`
+   * `external-format-out` -- Either an external format or `nil`. Used for converting strings written to the socket. If `nil`, an error will be signaled if an attempt is made to write a string to the socket."
   (let ((socket (make-socket driver
                              :buffer-size buffer-size
                              :external-format-in external-format-in
@@ -190,47 +220,62 @@
     socket))
 
 (defun socket-local-p (socket)
+  "Returns true if `socket` is connected to a local IPC socket, `nil` otherwise."
   (ecase (iolib:socket-address-family (socket-internal-socket socket))
     ((:local :file)
      t)
     ((:internet :ipv4 :ipv6)
      nil)))
 
+;; TODO - document how these behave when `socket` is local.
 (defun socket-remote-name (socket)
+  "Name of the remote host `socket` is connected to."
   (iolib:remote-name (socket-internal-socket socket)))
 (defun socket-remote-port (socket)
+  "Remote port that `socket` is connected to."
   (iolib:remote-port (socket-internal-socket socket)))
 (defun socket-local-name (socket)
+  "Local host name for `socket`'s connection."
   (if (socket-local-p socket)
       (iolib:address-name (iolib:local-name (socket-internal-socket socket)))
       (iolib:local-host (socket-internal-socket socket))))
 (defun socket-local-port (socket)
+  "Local port for `socket`'s connection."
   (unless (socket-local-p socket)
     (iolib:local-port (socket-internal-socket socket))))
 
 ;;; Reading
 (defun socket-paused-p (socket)
+  "True when `socket` is paused, i.e. it is not currently waiting for read events."
   (not (socket-reading-p socket)))
 
 (defun socket-pause (socket &key timeout)
+  "Pauses read events for `socket`. While a socket is paused, it will continue to send data as it is
+   queued, but it will not listen for and handle read events (meaning, on-socket-data will not be
+   called). This can be useful for throttling clients. If `timeout` is provided, it is interpreted
+   as the number of seconds to wait before resuming reads on the socket. Has no effect if `socket`
+   is already paused, although the resume timeout will still be activated."
   (unless (socket-paused-p socket)
     (iolib:remove-fd-handlers (socket-event-base socket)
                               (iolib:socket-os-fd (socket-internal-socket socket))
                               :read t)
-    (setf (socket-reading-p socket) nil))
-  (when timeout
-    (add-timer (curry #'socket-resume socket) timeout :one-shot t)))
+    (setf (socket-reading-p socket) nil)
+    (when timeout
+      (add-timer (curry #'socket-resume socket) timeout :one-shot t))))
 
 (defun socket-resume (socket)
+  "Resumes reads on a paused `socket`. If `socket` was not already paused, this function has no
+   effect."
   (when (socket-paused-p socket)
     (iolib:set-io-handler (socket-event-base socket)
                           (iolib:socket-os-fd (socket-internal-socket socket))
                           :read (lambda (&rest ig)
                                   (declare (ignore ig))
-                                  ;; NOTE - The redundant errors are there for reference.
-                                  (handler-bind (((or iolib:socket-connection-reset-error
-                                                      end-of-file
-                                                      error)
+                                  (handler-bind ((end-of-file (lambda (e &aux (*socket* socket))
+                                                                (on-socket-end-of-file
+                                                                 (socket-driver socket))
+                                                                (drop-connection e)))
+                                                 (error
                                                   (lambda (e &aux (*socket* socket))
                                                     (on-socket-error (socket-driver socket) e))))
                                     (restart-case
@@ -239,7 +284,7 @@
                                                 (nth-value
                                                  1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
                                           (when (zerop bytes-read)
-                                            (error 'end-of-file))
+                                            (error 'end-of-file :stream socket))
                                           (incf (socket-bytes-read socket) bytes-read)
                                           (let ((data (if-let (format (socket-external-format-in socket))
                                                         (babel:octets-to-string buffer
@@ -277,6 +322,13 @@
              do (setf (aref buffer index) byte)
                (incf index))
        finally (return buffer))))
+
+;; NOTE - Since we delay conversion of socket output, we have to make sure that if the external
+;; format is changed, anything that was written to the socket is encoded using the format that was
+;; present when the write happened.
+(defmethod (setf socket-external-format-out) :before (new-value (socket socket))
+  (declare (ignore new-value))
+  (socket-enqueue (coalesce-outputs socket) socket))
 
 (defun ensure-write-buffer (socket)
   (or (socket-write-buffer socket)
