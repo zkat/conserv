@@ -299,6 +299,7 @@
     (setf (socket-reading-p socket) t)))
 
 ;;; Writing
+
 (defun content->buffer (socket content)
   "Given CONTENT, which can be any lisp data, converts that data to an array of '(unsigned-byte 8)"
   (etypecase content
@@ -313,15 +314,17 @@
                content))))
 
 (defun coalesce-outputs (socket)
-  (let* ((outputs (dequeue-all (socket-write-queue socket)))
-         (total (reduce #'+ outputs :key #'length)))
-    (loop with buffer = (make-array total :element-type 'octet)
-       with index = 0
-       for output in outputs
-       do (loop for byte across (content->buffer socket output)
-             do (setf (aref buffer index) byte)
-               (incf index))
-       finally (return buffer))))
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (let* ((outputs (mapcar #'(lambda (buffer) (content->buffer socket buffer))
+                          (dequeue-all (socket-write-queue socket))))
+         (total (reduce #'+ outputs :key (lambda (x) (length (the (simple-array (unsigned-byte 8)) x))))))
+    (let ((buffer (make-array (the fixnum total) :element-type 'octet))
+          (next-start 0))
+      (declare (type fixnum next-start))
+      (loop for output in outputs
+         do (replace buffer (the (simple-array (unsigned-byte 8)) output) :start1 next-start)
+           (incf next-start (length output)))
+      buffer)))
 
 ;; NOTE - Since we delay conversion of socket output, we have to make sure that if the external
 ;; format is changed, anything that was written to the socket is encoded using the format that was
