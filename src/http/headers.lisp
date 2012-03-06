@@ -82,11 +82,19 @@
 
 (declaim (inline previous-buffer-content-for-index previous-buffer-content-from-index char-for-index current-char mark-buffer peek-forward n-peek-forward buffer-forward n-buffer-forward buffer-unused-available-content copy-marked-region forward-buffer-below forward-buffer-while-not))
 
+(deftype ascii-char ()
+  '#.(if (and (every
+             (lambda (char) (typep char 'base-char))
+             (concatenate 'string
+                          #(#\Backspace #\Linefeed #\Newline #\Page #\Return 	#\Rubout 	#\Space 	#\Tab)
+                          "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~")))
+         'base-char 'character))
+
 (declaim (ftype (function (multi-buffer fixnum) simple-string) previous-buffer-content-from-index)
-         (ftype (function (multi-buffer fixnum) character) previous-buffer-content-for-index) 
-         (ftype (function (multi-buffer fixnum function) character) char-for-index)
-         (ftype (function (multi-buffer function) character) current-char peek-forward)
-         (ftype (function (multi-buffer fixnum function) character) n-peek-forward)
+         (ftype (function (multi-buffer fixnum) ascii-char) previous-buffer-content-for-index) 
+         (ftype (function (multi-buffer fixnum function) ascii-char) char-for-index)
+         (ftype (function (multi-buffer function) ascii-char) current-char peek-forward)
+         (ftype (function (multi-buffer fixnum function) ascii-char) n-peek-forward)
          (ftype (function (multi-buffer)) mark-buffer buffer-forward)
          (ftype (function (multi-buffer) simple-string) buffer-unused-available-content)
          (ftype (function (multi-buffer fixnum)) n-buffer-forward)
