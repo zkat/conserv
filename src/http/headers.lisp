@@ -27,6 +27,11 @@
           (t tree))))
 
 (defmacro define-parser-stages ((parser-state-var header-info-var buffer-var) name &rest stages)
+  ;; (setf stages
+  ;;       (loop for stage in stages
+  ;;          collect `(,(first stage)
+  ;;                     (break "entering stage ~A" ,(first stage))
+  ;;                     ,@(rest stage))))
   (let ((expanded-stages nil))
     (loop for stage in (reverse stages)
        do (loop for es in expanded-stages ;; does this direction induce continuously expanded stages? (it should be irrelevant, yet still)
@@ -80,7 +85,7 @@
   (push (multi-buffer-string buffer) (multi-buffer-pstrings buffer))
   (setf (multi-buffer-string buffer) string))
 
-(declaim (inline previous-buffer-content-for-index previous-buffer-content-from-index char-for-index current-char mark-buffer peek-forward n-peek-forward buffer-forward n-buffer-forward buffer-unused-available-content copy-marked-region forward-buffer-below forward-buffer-while-not))
+(declaim (inline previous-buffer-content-for-index previous-buffer-content-from-index char-for-index current-char mark-buffer peek-forward n-peek-forward buffer-forward n-buffer-forward n-buffer-backward buffer-unused-available-content copy-marked-region forward-buffer-below forward-buffer-while-not forward-buffer-while))
 
 (deftype ascii-char ()
   '#.(if (and (every
@@ -181,6 +186,12 @@
            (type fixnum n))
   (incf (multi-buffer-index buffer) n))
 
+(defun n-buffer-backward (buffer n)
+  "moves the buffer n characters backward"
+  (declare (type multi-buffer buffer)
+           (type fixnum n))
+  (decf (multi-buffer-index buffer) n))
+
 (defun buffer-unused-available-content (buffer)
   "yields all content in the buffer which is after the current index"
   (declare (type multi-buffer buffer))
@@ -235,6 +246,14 @@
            (type character char)
            (type function callback))
   (loop until (eql char (peek-forward buffer callback))
+     do (buffer-forward buffer)))
+
+(defun forward-buffer-while (buffer characters callback)
+  "forwards the buffer until the character right on the <buffer>'s index is not one of those in characters"
+  (declare (type multi-buffer buffer)
+           (type simple-string characters)
+           (type function callback))
+  (loop while (find (current-char buffer callback) characters :test #'eql)
      do (buffer-forward buffer)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -335,20 +354,56 @@
                                                                        (stage-func :error))) ; we can't reach this, forward-buffer-while-not must have read all parts of the buffer we've used so far
                                     nil)
                               (header-info-headers header-info))
-                        (call-stage :read-header-value-init))
-  (:read-header-value-init (buffer-forward buffer) ; forward the #\:
-                           (mark-buffer buffer)
-                           (call-stage :read-header-value))
-  (:read-header-value (forward-buffer-below buffer
-                                            :elements #.(coerce #(#\Return #\Linefeed) 'simple-string)
-                                            :not-followed-by #.(coerce #(#\Space #\Tab) 'simple-string)
-                                            :restart-callback (stage-func :read-header-value))
-                      (setf (cdr (first (header-info-headers header-info)))
-                            (copy-marked-region buffer
-                                                (stage-func :error)))
-                      (n-buffer-forward buffer
-                                        3)
-                      (call-stage :init))
+                        (n-buffer-forward buffer 2)
+                        (call-stage :skip-header-value-spaces))
+  (:skip-header-value-spaces (forward-buffer-while buffer
+                                                   #.(coerce #(#\Space #\Tab) 'simple-string)
+                                                   (stage-func :finish-reading-first-header-value))
+                             ;; we're now exactly at the first character
+                             (call-stage :read-header-value-init))
+  (:read-header-value-init (mark-buffer buffer)
+                           (call-stage :read-first-header-value))
+  (:read-first-header-value (forward-buffer-below buffer
+                                                  :elements #.(coerce #(#\Return #\Linefeed) 'simple-string)
+                                                  :not-followed-by ""
+                                                  :restart-callback (stage-func :read-first-header-value))
+                            (n-buffer-forward buffer 3)
+                            (call-stage :finish-reading-first-header-value))
+  (:finish-reading-first-header-value (if (find (current-char buffer (stage-func :finish-reading-first-header-value))
+                                                #.(coerce #(#\Space #\Tab) 'simple-string)
+                                                :test #'eql)
+                                          (progn (n-buffer-backward buffer 3)
+                                             (push (copy-marked-region buffer
+                                                                       (stage-func :error)) ; we peeked further than this, we must know what we can copy
+                                                   (cdr (first (header-info-headers header-info))))
+                                             (n-buffer-forward buffer 3)
+                                             (call-stage :read-rest-header-value-init))
+                                          (progn (n-buffer-backward buffer 3)
+                                             (setf (cdr (first (header-info-headers header-info)))
+                                                   (copy-marked-region buffer (stage-func :error)))
+                                             (n-buffer-forward buffer 3)
+                                             (call-stage :init))))
+  (:read-rest-header-value-init (forward-buffer-while buffer
+                                                      #.(coerce #(#\Space #\Tab) 'simple-string)
+                                                      (stage-func :read-rest-header-value-init))
+                                (mark-buffer buffer)
+                                (call-stage :read-rest-header-values))
+  (:read-rest-header-values (forward-buffer-below buffer
+                                                  :elements #.(coerce #(#\Return #\Linefeed) 'simple-string)
+                                                  :not-followed-by ""
+                                                  :restart-callback (stage-func :read-rest-header-values))
+                            (call-stage :finish-reading-rest-header-value))
+  (:finish-reading-rest-header-value (let ((next-char (peek-forward buffer (stage-func :finish-reading-first-header-value))))
+                                       (push (copy-marked-region buffer
+                                                                 (stage-func :error))
+                                             (cdr (first (header-info-headers header-info))))
+                                       (n-buffer-forward buffer 3)
+                                       (if (or (eql next-char #\Space)
+                                              (eql next-char #\Tab))
+                                           (call-stage :read-rest-header-value-init)
+                                           (progn (setf (cdr (first (header-info-headers header-info)))
+                                                    (apply #'concatenate 'string (nreverse (cdr (first (header-info-headers header-info))))))
+                                              (call-stage :init)))))
   (:end-header-parsing (values T
                                header-info
                                (buffer-unused-available-content buffer)))
