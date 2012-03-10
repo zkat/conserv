@@ -161,7 +161,7 @@ The variable `*http-server*` is also available when these events are called.
 
 *[function]* `request-method request`
 
-  Request method as a string (e.g. `"GET"`, `"POST"`, `"CONNECT"`)
+  Request method as a keyword (e.g. `:get` `:post` `:connect` `:put` `:delete`)
 
 *[function]* `request-url request`
 
@@ -169,7 +169,7 @@ The variable `*http-server*` is also available when these events are called.
 
 *[function]* `request-http-version request`
 
-  HTTP version as a string. (e.g. `"1.1"`, `"1.0"`)
+  HTTP version as a keyword. (e.g. `:http-1.1`, `:http-1.0`)
   
 *[function]* `request-headers-in request`
 
