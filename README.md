@@ -50,3 +50,8 @@ individual packages can be found under docs/<package-name>.md
   * conserv - Includes the basic event library. with-event-loop, add-timer, exit-event-loop, and so on.
   * conserv.tcp - TCP client/server
   * conserv.http - HTTP server
+
+# License
+
+Conserv is free software, licensed under the MIT license. See the included COPYING file for
+licensing details.
