@@ -6,25 +6,35 @@
 ;;;; types
 (deftype ascii-char ()
   '#.(if (and (every
-             (lambda (char) (typep char 'base-char))
-             (concatenate 'string
-                          #(#\Backspace #\Linefeed #\Newline #\Page #\Return 	#\Rubout 	#\Space 	#\Tab)
-                          "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~")))
-         'base-char 'character))
+               (lambda (char) (typep char 'base-char))
+               (concatenate 'string
+                            '(#\Backspace #\Linefeed #\Newline
+                              #\Page #\Return #\Rubout #\Space #\Tab)
+                            "!\"#$%&'()*+,-./0123456789:;<=>?@"
+                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`"
+                            "abcdefghijklmnopqrstuvwxyz{|}~")))
+         'base-char
+         'character))
 
 (deftype ascii-simple-string ()
   '#.(if (and (every
-             (lambda (char) (typep char 'base-char))
-             (concatenate 'string
-                          #(#\Backspace #\Linefeed #\Newline #\Page #\Return 	#\Rubout 	#\Space 	#\Tab)
-                          "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~")))
-         'simple-base-string 'simple-string))
+               (lambda (char) (typep char 'base-char))
+               (concatenate 'string
+                            '(#\Backspace #\Linefeed #\Newline
+                              #\Page #\Return #\Rubout #\Space #\Tab)
+                            "!\"#$%&'()*+,-./0123456789:;<=>?@"
+                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`"
+                            "abcdefghijklmnopqrstuvwxyz{|}~")))
+         'simple-base-string
+         'simple-string))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parser stages support
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun mk-combined-symbol (base attached &optional intern-package)
-    "creates a new symbol based on base and attached.  the symbol is interned in the same package as base, unless intern-package is non-nil.  if intern-package is non-nil the new symbol is interned in the package which the package designator intern-package shows."
+    "creates a new symbol based on base and attached.  the symbol is interned in the same package as
+base, unless intern-package is non-nil.  if intern-package is non-nil the new symbol is interned in
+the package which the package designator intern-package shows."
     (intern (concatenate 'string (string base) "-" (string attached))
             (if intern-package intern-package
                 (symbol-package base)))))
@@ -79,7 +89,7 @@
                         (declare (ignorable ,header-info-var ,buffer-var)
                                  (type header-info ,header-info-var)
                                  (type multi-buffer ,buffer-var))
-                       ,@(rest stage))))
+                        ,@(rest stage))))
                  stages))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -109,7 +119,7 @@
 (declaim (inline previous-buffer-content-for-index previous-buffer-content-from-index char-for-index current-char mark-buffer peek-forward n-peek-forward buffer-forward n-buffer-forward n-buffer-backward buffer-unused-available-content copy-marked-region forward-buffer-below forward-buffer-while-not forward-buffer-while next-char-blank-p buffer-at-blank-p forward-until-before-clrf skip-all-blanks buffer-at-crlf-p forward-to-before-space))
 
 (declaim (ftype (function (multi-buffer fixnum) ascii-simple-string) previous-buffer-content-from-index)
-         (ftype (function (multi-buffer fixnum) ascii-char) previous-buffer-content-for-index) 
+         (ftype (function (multi-buffer fixnum) ascii-char) previous-buffer-content-for-index)
          (ftype (function (multi-buffer fixnum function) ascii-char) char-for-index)
          (ftype (function (multi-buffer function) ascii-char) current-char peek-forward)
          (ftype (function (multi-buffer fixnum function) ascii-char) n-peek-forward)
@@ -125,7 +135,7 @@
   (setf index (- index))
   (or
    (loop named listwalker
-      for (the ascii-simple-string string) in (multi-buffer-pstrings buffer)
+      for string of-type ascii-simple-string in (multi-buffer-pstrings buffer)
       for stringlength = (length (the ascii-simple-string string))
       if (> index stringlength)
       do (decf index stringlength)
@@ -179,7 +189,7 @@
        for stringlength = (length (the ascii-simple-string string))
        if (> stringlength leftover-index)
        do (progn (push leftover-index lists-to-append)
-             (decf leftover-index stringlength))
+                 (decf leftover-index stringlength))
        else
        do (return-from previous-buffer-content-from-index
             (the ascii-simple-string
@@ -253,13 +263,13 @@
   (when (>= (multi-buffer-index buffer) (length (multi-buffer-string buffer)))
     (error 'buffer-lacks-data :recover-function callback))
   (cond ((and (>= (multi-buffer-mark buffer) 0)
-            ) ; (>= 0 (multi-buffer-index buffer)) ;; implicitly true, the index is always further than the mark when calling this
+              ) ; (>= 0 (multi-buffer-index buffer)) ;; implicitly true, the index is always further than the mark when calling this
          (the ascii-simple-string
            (subseq (multi-buffer-string buffer)
                    (multi-buffer-mark buffer)
                    (1+ (multi-buffer-index buffer)))))
         ((and (< (multi-buffer-mark buffer) 0)
-            (>= (multi-buffer-index buffer) 0))
+              (>= (multi-buffer-index buffer) 0))
          (the ascii-simple-string
            (append-ascii-strings (previous-buffer-content-from-index buffer (multi-buffer-mark buffer))
                                  (subseq (multi-buffer-string buffer) 0 (1+ (multi-buffer-index buffer))))))
@@ -277,15 +287,15 @@
            (type function restart-callback))
   (let ((bound (1+ (length elements))))
     (loop until (and (block elements-correct-p
-                  (loop for n of-type fixnum from 1
-                     for element of-type character across elements
-                     unless (eql (n-peek-forward buffer n restart-callback)
-                                 element)
-                     do (return-from elements-correct-p nil))
-                  T)
-                (not (find (n-peek-forward buffer bound restart-callback)
-                         not-followed-by
-                         :test #'eql)))
+                       (loop for n of-type fixnum from 1
+                          for element of-type character across elements
+                          unless (eql (n-peek-forward buffer n restart-callback)
+                                      element)
+                          do (return-from elements-correct-p nil))
+                       T)
+                     (not (find (n-peek-forward buffer bound restart-callback)
+                                not-followed-by
+                                :test #'eql)))
        do (buffer-forward buffer))))
 
 (defun forward-buffer-while-not (buffer char callback)
@@ -316,7 +326,7 @@
   (declare (type multi-buffer buffer)
            (type function callback))
   (and (eql #\Return (current-char buffer callback))
-     (eql #\Newline (peek-forward buffer callback))))
+       (eql #\Newline (peek-forward buffer callback))))
 
 (defun skip-all-blanks (buffer callback)
   "forwards the buffer's index until it's not at a blank character anymore.  blank characters are #\Space #\Tab"
@@ -324,7 +334,7 @@
            (type function callback))
   (loop for current = (current-char buffer callback)
      while (or (eql current #\Space)
-              (eql current #\Tab))
+               (eql current #\Tab))
      do (buffer-forward buffer)))
 
 (defun forward-until-before-clrf (buffer callback)
@@ -332,7 +342,7 @@
   (declare (type multi-buffer buffer)
            (type function callback))
   (loop until (and (eql (peek-forward buffer callback) #\Return)
-              (eql (n-peek-forward buffer 2 callback) #\Newline))
+                   (eql (n-peek-forward buffer 2 callback) #\Newline))
      do (buffer-forward buffer)))
 
 (defun buffer-at-blank-p (buffer callback)
@@ -342,7 +352,7 @@
   (let ((current-char (current-char buffer callback)))
     (declare (type ascii-char current-char))
     (or (eql current-char #\Space)
-       (eql current-char #\Tab))))
+        (eql current-char #\Tab))))
 
 (defun next-char-blank-p (buffer callback)
   "returns non-nil iff the character after the buffer's index is either #\Space or #\Tab"
@@ -351,7 +361,7 @@
   (let ((peek (peek-forward buffer callback)))
     (declare (type ascii-char peek))
     (or (eql peek #\Space)
-       (eql peek #\Tab))))
+        (eql peek #\Tab))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parser and header administration
@@ -439,9 +449,9 @@
   (:init (mark-buffer buffer)
          (if (buffer-at-crlf-p buffer (stage-func :init))
              (progn (n-buffer-forward buffer 2)
-                (call-stage :end-header-parsing))
+                    (call-stage :end-header-parsing))
              (progn (mark-buffer buffer)
-                (call-stage :copy-header-keyword))))
+                    (call-stage :copy-header-keyword))))
   (:copy-header-keyword (forward-buffer-while-not buffer #\:
                                                   (stage-func :copy-header-keyword))
                         (push (cons (string-upcase (copy-marked-region buffer
@@ -460,16 +470,16 @@
                             (call-stage :finish-reading-first-header-value))
   (:finish-reading-first-header-value (if (buffer-at-blank-p buffer (stage-func :finish-reading-first-header-value))
                                           (progn (n-buffer-backward buffer 3)
-                                             (push (copy-marked-region buffer
-                                                                       (stage-func :error)) ; we peeked further than this, we know what we can copy
-                                                   (cdr (first (header-info-headers header-info))))
-                                             (n-buffer-forward buffer 3)
-                                             (call-stage :read-rest-header-value-init))
+                                                 (push (copy-marked-region buffer
+                                                                           (stage-func :error)) ; we peeked further than this, we know what we can copy
+                                                       (cdr (first (header-info-headers header-info))))
+                                                 (n-buffer-forward buffer 3)
+                                                 (call-stage :read-rest-header-value-init))
                                           (progn (n-buffer-backward buffer 3)
-                                             (setf (cdr (first (header-info-headers header-info)))
-                                                   (copy-marked-region buffer (stage-func :error))) ; we peeked further than this, we know what we can copy
-                                             (n-buffer-forward buffer 3)
-                                             (call-stage :init))))
+                                                 (setf (cdr (first (header-info-headers header-info)))
+                                                       (copy-marked-region buffer (stage-func :error))) ; we peeked further than this, we know what we can copy
+                                                 (n-buffer-forward buffer 3)
+                                                 (call-stage :init))))
   (:read-rest-header-value-init (skip-all-blanks buffer (stage-func :read-rest-header-value-init))
                                 (mark-buffer buffer)
                                 (call-stage :read-rest-header-values))
@@ -482,11 +492,11 @@
                                               (n-buffer-forward buffer 3)))
                                        (if (next-char-blank-p buffer (stage-func :finish-reading-first-header-value))
                                            (progn (push-n-forward)
-                                              (call-stage :read-rest-header-value-init))
+                                                  (call-stage :read-rest-header-value-init))
                                            (progn (push-n-forward)
-                                              (setf (cdr (first (header-info-headers header-info)))
-                                                    (apply #'concatenate 'string (nreverse (cdr (first (header-info-headers header-info))))))
-                                              (call-stage :init)))))
+                                                  (setf (cdr (first (header-info-headers header-info)))
+                                                        (apply #'concatenate 'string (nreverse (cdr (first (header-info-headers header-info))))))
+                                                  (call-stage :init)))))
   (:end-header-parsing (values T
                                header-info
                                (buffer-unused-available-content buffer)))
