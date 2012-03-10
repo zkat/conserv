@@ -226,6 +226,10 @@ although this can safely be changed by `setf`ing `socket-driver` inside the `ser
 
   Returns the number of `socket` objects connected to `server`.
 
+*[function]* `server-paused-p server`
+
+  Returns true when `server` is not currently accepting new connections.
+
 *[function]* `server-pause server &key timeout`
 
   Pauses read events for `server`, preventing it from accepting new connections. While paused, all

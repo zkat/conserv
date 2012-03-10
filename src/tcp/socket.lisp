@@ -191,11 +191,16 @@
                        (external-format-out *default-external-format*))
   "Establishes a TCP connection with `host`. If successful, returns a `socket` object.
 
-   * `driver` -- an instance of a driver class that will be used to dispatch `socket-event-driver` events.
-   * `host` -- Either a string representing a remote IP address or hostname, or a pathname to a local IPC socket.
+   * `driver` -- an instance of a driver class that will be used to dispatch `socket-event-driver`
+     events.
+   * `host` -- Either a string representing a remote IP address or hostname, or a pathname to a
+     local IPC socket.
    * `port` -- Port number to connect to. Should not be provided if `host` is an IPC socket.
-   * `external-format-in` -- Either an external format or `nil`. Used for determining the encoding of data passed to `on-socket-data`
-   * `external-format-out` -- Either an external format or `nil`. Used for converting strings written to the socket. If `nil`, an error will be signaled if an attempt is made to write a string to the socket."
+   * `external-format-in` -- Either an external format or `nil`. Used for determining the encoding
+     of data passed to `on-socket-data`
+   * `external-format-out` -- Either an external format or `nil`. Used for converting strings
+     written to the socket. If `nil`, an error will be signaled if an attempt is made to write a
+     string to the socket."
   (let ((socket (make-socket driver
                              :buffer-size buffer-size
                              :external-format-in external-format-in
@@ -267,35 +272,36 @@
   "Resumes reads on a paused `socket`. If `socket` was not already paused, this function has no
    effect."
   (when (socket-paused-p socket)
-    (iolib:set-io-handler (socket-event-base socket)
-                          (iolib:socket-os-fd (socket-internal-socket socket))
-                          :read (lambda (&rest ig)
-                                  (declare (ignore ig))
-                                  (handler-bind ((end-of-file (lambda (e &aux (*socket* socket))
-                                                                (on-socket-end-of-file
-                                                                 (socket-driver socket))
-                                                                (drop-connection e)))
-                                                 (error
-                                                  (lambda (e &aux (*socket* socket))
-                                                    (on-socket-error (socket-driver socket) e))))
-                                    (restart-case
-                                        (let* ((buffer (socket-read-buffer socket))
-                                               (bytes-read
-                                                (nth-value
-                                                 1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
-                                          (when (zerop bytes-read)
-                                            (error 'end-of-file :stream socket))
-                                          (incf (socket-bytes-read socket) bytes-read)
-                                          (let ((data (if-let (format (socket-external-format-in socket))
-                                                        (babel:octets-to-string buffer
-                                                                                :start 0
-                                                                                :end bytes-read
-                                                                                :encoding format)
-                                                        (subseq buffer 0 bytes-read))))
-                                            (let ((*socket* socket))
-                                              (on-socket-data (socket-driver socket) data))))
-                                      (continue () nil)
-                                      (drop-connection () (close socket :abort t))))))
+    (iolib:set-io-handler
+     (socket-event-base socket)
+     (iolib:socket-os-fd (socket-internal-socket socket))
+     :read (lambda (&rest ig)
+             (declare (ignore ig))
+             (handler-bind ((end-of-file (lambda (e &aux (*socket* socket))
+                                           (on-socket-end-of-file
+                                            (socket-driver socket))
+                                           (drop-connection e)))
+                            (error
+                             (lambda (e &aux (*socket* socket))
+                               (on-socket-error (socket-driver socket) e))))
+               (restart-case
+                   (let* ((buffer (socket-read-buffer socket))
+                          (bytes-read
+                           (nth-value
+                            1 (iolib:receive-from (socket-internal-socket socket) :buffer buffer))))
+                     (when (zerop bytes-read)
+                       (error 'end-of-file :stream socket))
+                     (incf (socket-bytes-read socket) bytes-read)
+                     (let ((data (if-let (format (socket-external-format-in socket))
+                                   (babel:octets-to-string buffer
+                                                           :start 0
+                                                           :end bytes-read
+                                                           :encoding format)
+                                   (subseq buffer 0 bytes-read))))
+                       (let ((*socket* socket))
+                         (on-socket-data (socket-driver socket) data))))
+                 (continue () nil)
+                 (drop-connection () (close socket :abort t))))))
     (setf (socket-reading-p socket) t)))
 
 ;;; Writing
