@@ -321,14 +321,15 @@
 
 (defun coalesce-outputs (socket)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (let* ((outputs (mapcar #'(lambda (buffer) (content->buffer socket buffer))
+  (let* ((outputs (mapcar (curry #'content->buffer socket)
                           (dequeue-all (socket-write-queue socket))))
-         (total (reduce #'+ outputs :key (lambda (x) (length (the (simple-array (unsigned-byte 8)) x))))))
-    (let ((buffer (make-array (the fixnum total) :element-type 'octet))
+         (total (reduce #'+ outputs :key #'length)))
+    (declare (fixnum total))
+    (let ((buffer (make-array total :element-type 'octet))
           (next-start 0))
       (declare (type fixnum next-start))
-      (loop for output in outputs
-         do (replace buffer (the (simple-array (unsigned-byte 8)) output) :start1 next-start)
+      (loop for output of-type (simple-array octet) in outputs
+         do (replace buffer output :start1 next-start)
            (incf next-start (length output)))
       buffer)))
 
