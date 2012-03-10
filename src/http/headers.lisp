@@ -13,7 +13,12 @@
          'base-char 'character))
 
 (deftype ascii-simple-string ()
-  '(simple-array ascii-char))
+  '#.(if (and (every
+             (lambda (char) (typep char 'base-char))
+             (concatenate 'string
+                          #(#\Backspace #\Linefeed #\Newline #\Page #\Return 	#\Rubout 	#\Space 	#\Tab)
+                          "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~")))
+         'simple-base-string 'simple-string))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parser stages support
@@ -335,6 +340,7 @@
   (declare (type multi-buffer buffer)
            (type function callback))
   (let ((current-char (current-char buffer callback)))
+    (declare (type ascii-char current-char))
     (or (eql current-char #\Space)
        (eql current-char #\Tab))))
 
@@ -343,10 +349,9 @@
   (declare (type multi-buffer buffer)
            (type function callback))
   (let ((peek (peek-forward buffer callback)))
+    (declare (type ascii-char peek))
     (or (eql peek #\Space)
        (eql peek #\Tab))))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; parser and header administration
@@ -372,7 +377,7 @@
                (if (typep string 'ascii-simple-string)
                    string
                    (make-ascii-simple-string string)))
-  (handler-case (funcall (parser-state-parser-stage-function parser-state) parser-state)
+  (handler-case (funcall (the function (parser-state-parser-stage-function parser-state)) parser-state)
     (buffer-lacks-data (bld)
       (setf (parser-state-parser-stage-function parser-state)
             (recover-function bld))
@@ -499,7 +504,11 @@
 
 (declaim (ftype (function (list string-designator) (or null simple-string)) request-header))
 (defun request-header (header-info-headers header)
-  (let ((match (find (string header) header-info-headers :key #'car :test #'string=)))
+  (let ((match (find (string header) header-info-headers
+                     :key #'car
+                     :test (lambda (a b)
+                             (declare (type ascii-simple-string a b))
+                             (string= a b)))))
     (when match (cdr match))))
 
 ;; methods for http.lisp
