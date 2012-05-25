@@ -6,31 +6,31 @@
         #:conserv.utils)
   (:export
 
-   ;; Sockets
-   #:*socket*
-   #:on-socket-error
-   #:on-socket-end-of-file
-   #:on-socket-connect
-   #:on-socket-data
-   #:on-socket-close
-   #:on-socket-output-empty
+   ;; Tcp-Clients
+   #:*tcp-client*
+   #:on-tcp-client-error
+   #:on-tcp-client-end-of-file
+   #:on-tcp-client-connect
+   #:on-tcp-client-data
+   #:on-tcp-client-close
+   #:on-tcp-client-output-empty
    #:drop-connection
 
-   #:socket-connect
-   #:socket-driver
-   #:socket-server
-   #:socket-external-format-in
-   #:socket-external-format-out
-   #:socket-local-p
-   #:socket-remote-name
-   #:socket-remote-port
-   #:socket-local-name
-   #:socket-local-port
-   #:socket-paused-p
-   #:socket-pause
-   #:socket-resume
-   #:socket-bytes-read
-   #:socket-bytes-written
+   #:tcp-client-connect
+   #:tcp-client-driver
+   #:tcp-client-server
+   #:tcp-client-external-format-in
+   #:tcp-client-external-format-out
+   #:tcp-client-local-p
+   #:tcp-client-remote-name
+   #:tcp-client-remote-port
+   #:tcp-client-local-name
+   #:tcp-client-local-port
+   #:tcp-client-paused-p
+   #:tcp-client-pause
+   #:tcp-client-resume
+   #:tcp-client-bytes-read
+   #:tcp-client-bytes-written
 
    ;; Servers
    #:*server*

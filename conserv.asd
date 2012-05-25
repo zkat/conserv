@@ -17,9 +17,9 @@
                                   :serial t
                                   :components
                                   ((:file "package")
-                                   (:file "socket")
-                                   (:file "server")))
-                         (:module http
+                                   (:file "tcp-client")
+                                   (:file "tcp-listener")))
+                         #+nil(:module http
                                   :serial t
                                   :components
                                   ((:file "package")
