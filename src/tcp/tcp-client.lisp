@@ -223,6 +223,8 @@
     (setf (tcp-client-internal-socket tcp-client) internal-socket)
     (tcp-client-resume tcp-client)
     (start-writes tcp-client)
+    (let ((*tcp-client* tcp-client))
+      (on-tcp-client-connect tcp-client))
     tcp-client))
 
 (defun tcp-client-local-p (tcp-client)
