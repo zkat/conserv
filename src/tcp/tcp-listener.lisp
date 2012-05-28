@@ -105,9 +105,10 @@
              (declare (ignore ig))
              (when-let (client-sock (iolib:accept-connection (tcp-client-internal-socket
                                                               (tcp-listener-tcp-client tcp-listener))))
-               (let ((tcp-client (make-tcp-client (tcp-listener-client-driver tcp-listener)
-                                          :external-format-in (tcp-listener-external-format-in tcp-listener)
-                                          :external-format-out (tcp-listener-external-format-out tcp-listener))))
+               (let ((tcp-client (make-tcp-client
+                                  (tcp-listener-client-driver tcp-listener)
+                                  :external-format-in (tcp-listener-external-format-in tcp-listener)
+                                  :external-format-out (tcp-listener-external-format-out tcp-listener))))
                  (setf (gethash tcp-client (tcp-listener-connections tcp-listener)) tcp-client
                        (tcp-client-internal-socket tcp-client) client-sock
                        (tcp-client-tcp-listener tcp-client) tcp-listener)
