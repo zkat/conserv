@@ -111,10 +111,10 @@
                  (setf (gethash tcp-client (tcp-listener-connections tcp-listener)) tcp-client
                        (tcp-client-internal-socket tcp-client) client-sock
                        (tcp-client-tcp-listener tcp-client) tcp-listener)
-                 (let ((*tcp-listener* tcp-listener))
-                   (on-tcp-listener-connection (tcp-listener-driver tcp-listener) tcp-client))
                  (tcp-client-resume tcp-client)
-                 (start-writes tcp-client)))))))
+                 (start-writes tcp-client)
+                 (let ((*tcp-listener* tcp-listener))
+                   (on-tcp-listener-connection (tcp-listener-driver tcp-listener) tcp-client))))))))
 
 (defun tcp-listen (driver &key
                    (host iolib:+ipv4-unspecified+)
