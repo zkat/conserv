@@ -9,9 +9,9 @@
 
 (defclass hello () ())
 
-(defmethod on-tcp-listener-connection ((driver hello) socket)
-  (format socket "~&Hello, world!~%")
-  (close socket))
+(defmethod on-tcp-listener-connection ((driver hello) tcp-client)
+  (format tcp-client "~&Hello, world!~%")
+  (close tcp-client))
 
 ;; Call as (start t) to use local IPC sockets instead of binding to a host/port.
 (defun start (&optional localp)
