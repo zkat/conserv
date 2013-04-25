@@ -32,19 +32,19 @@
    #:tcp-client-bytes-read
    #:tcp-client-bytes-written
 
-   ;; Servers
-   #:*server*
-   #:on-server-listen
-   #:on-server-connection
-   #:on-server-error
-   #:on-server-close
+   ;; Tcp-Listeners
+   #:*tcp-listener*
+   #:on-tcp-listener-listen
+   #:on-tcp-listener-connection
+   #:on-tcp-listener-error
+   #:on-tcp-listener-close
 
-   #:server-listen
-   #:server-driver
-   #:server-external-format-in
-   #:server-external-format-out
-   #:server-list-clients
-   #:server-count-clients
-   #:server-paused-p
-   #:server-pause
-   #:server-resume))
+   #:tcp-listen
+   #:tcp-listener-driver
+   #:tcp-listener-external-format-in
+   #:tcp-listener-external-format-out
+   #:tcp-listener-list-clients
+   #:tcp-listener-count-clients
+   #:tcp-listener-paused-p
+   #:tcp-listener-pause
+   #:tcp-listener-resume))

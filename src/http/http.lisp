@@ -16,7 +16,7 @@
    (connection ((driver a))
     :default-form nil
     :documentation "Event called when a user-agent first connects to the
-                    server. `conserv.tcp:*socket*` contains the incoming socket
+                    server. `conserv.tcp:*tcp-client*` contains the incoming socket
                     connection. `*request*` is NOT bound at this point.")
    (close ((driver a))
     :default-form nil
@@ -94,14 +94,14 @@ written to the user agent, and queued output will not be flushed before closing"
 
 (defmethod on-server-connection ((server http-server) socket)
   (let ((*http-server* server)
-        (*socket* socket))
+        (*tcp-client* socket))
     (on-http-connection (http-server-driver server)))
   (new-request server socket))
 
 (defmethod on-socket-data ((server http-server) data
                            &aux
                            (driver (http-server-driver server))
-                           (socket *socket*))
+                           (socket *tcp-client*))
   (let ((*request* (gethash socket (http-server-connections server)))
         (*http-server* server))
     (case (request-state *request*)
@@ -131,7 +131,7 @@ written to the user agent, and queued output will not be flushed before closing"
             (cond ((or
                     (request-header header-info :upgrade)
                     (eq :connect (request-method *request*)))
-                   (upgrade-request *request* *socket* server driver rest))
+                   (upgrade-request *request* *tcp-client* server driver rest))
                   (t
                    (when (string= (request-header header-info :expect) "100-continue")
                      #+nil(on-request-continue driver)
@@ -162,14 +162,14 @@ written to the user agent, and queued output will not be flushed before closing"
   (setf (request-keep-alive-p request) t)
   (close request)
   (unregister-http-socket server socket)
-  (setf (socket-driver socket) nil)
+  (setf (tcp-client-driver socket) nil)
   (on-request-upgrade driver (babel:string-to-octets rest :encoding :ascii)))
 
 (defun unregister-http-socket (server socket)
   (remhash socket (http-server-connections server)))
 
 (defmethod on-socket-close ((server http-server))
-  (unregister-http-socket server *socket*))
+  (unregister-http-socket server *tcp-client*))
 (defmethod on-server-listen ((server http-server))
   (let ((*http-server* server))
     (on-http-listen (http-server-driver server))))
@@ -210,9 +210,9 @@ object.
                                     :external-format-in external-format-in
                                     :external-format-out external-format-out)))
     (setf (http-server-server http-server)
-          (server-listen http-server
-                         :host host
-                         :port port
-                         :external-format-in nil
-                         :external-format-out nil))
+          (tcp-listen http-server
+                      :host host
+                      :port port
+                      :external-format-in nil
+                      :external-format-out nil))
     http-server))

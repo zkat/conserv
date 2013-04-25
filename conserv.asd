@@ -19,7 +19,7 @@
                                   ((:file "package")
                                    (:file "tcp-client")
                                    (:file "tcp-listener")))
-                         #+nil(:module http
+                         (:module http
                                   :serial t
                                   :components
                                   ((:file "package")
