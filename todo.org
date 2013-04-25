@@ -1,0 +1,257 @@
+* Base server
+** DONE Figure out the binary-p thing. Ughhh.
+   It seems that even when write-sequence is given an array of bytes, it treats the sequence as a
+   string and calles stream-write-char.
+** DONE server-name and server-port
+** DONE client-pause
+** DONE client-resume
+** DONE Read/write buffering
+   I don't think this quite has to work like this... iolib does its own buffering, manages buffer
+   sizes, etc. Considering what we're doing (writing a relatively thin wrapper), it's probably a
+   good idea to let iolib do more of the heavy lifting.
+   UPDATE: It looks like receive-from is pretty low-level...
+   UPDATE: send-to as well. I guess this is really the way to do it!
+** DONE client-bytes-read
+** DONE client-bytes-written
+** DONE Reconsider the event names to be more obvious.
+** DONE on-client-close doesn't seem to be working as expected. :(
+   Dunno what made me think this. Seems to be working fine.
+** DONE max-connections
+   Stop accepting connections if we've reached this limit.
+
+   Actually, this is probably better left to the application itself. It can be trivially implemented
+   using on-client-connect and server-count-clients. In the case of websockets, this would require a
+   special server-busy message being sent to the client, so I'll just leave it to them for now.
+** DONE Nice interactive development support (look at clws)
+   Well, fsvo nice. By default, client connections are dropped when a client-error happens. At least
+   during development, ON-CLIENT-ERROR should be defined as (invoke-debugger e)
+   To make this even better, most events should be wrapped in a restart-case of some sort. That can
+   be done in the future as annoyances are discovered, though.
+** DONE Separate server-listen from main event-base loop.
+   We should be able to have multiple connections and servers under the same event loop.
+** DONE Base client
+   Write some stuff so we can have a simple tcp client to go along with the server. One would hope
+   it doesn't take much more than what's already provided by the current client stuff. Should just
+   be CONNECT + some multiplexing or something.
+** DONE Wrap iolib's add-timer/remove-timer
+** DONE Separate server and client drivers
+   Possibly configure them to be differently. Define separate protocols, at least.
+** DONE Local socket support
+   Do this automagically. If a pathname is provided as a host, then make it a local socket :)
+   UPDATE: The server runs, but I don't know how to test it, and it gets a type error when CLOSE is
+   called.
+** DONE Remove :write handler when there's no output in the buffer
+   And re-enable it when someone tries to write to the socket again.
+** DONE Use dynamic variables
+   For all these events, instead of passing around the various values (and requiring users to have
+   them in their lambda lists), simply put things like the socket, the server, etc, into
+   *dynamic-variables*, which the user can optionally access within their event implementation
+   body. At least for the common parameters (for example, *socket*, *server*, *request*, *response*,
+   etc)
+** DONE Instead of :binaryp, why not just :external-format-in nil?
+   :external-format-out nil doesn't make much sense, since only strings are encoded as they're going
+   out, and those should always have an external-format for encoding.
+** DONE Consider error behavior
+   Right now, everything from a serious user-code error to a simple EOF results in an error. By
+   default, clients are simply dropped (silencing user errors), but disabling that during
+   development leads to even simple client disconnections raising conditions. Is this the right
+   behavior? Should all users expect to (defmethod on-{socket,server}-error ...)?
+** DONE Move 'base server' to src/tcp/ and rename the package to conserv.tcp
+** DONE Full documentation
+   Document the entire external API, write some extra usage examples.
+** DONE Encode output using correct external-format
+   Since we buffer output, multiple calls to (SETF EXTERNAL-FORMAT-OUT) will result in only the last
+   of the formats actually being used. We can still be fairly lazy about converting, but we have to
+   make sure conversion happens immediately in the case where the external format is changed.
+** DONE local/remote host/port
+** DONE server-paused-p
+** DONE server-pause
+   For throttling incoming connections. Can probably be implemented by keeping a timer inside the
+   server that gets incremented every time the :read handler on the server socket is called.
+   Provide an API for it anyway.
+** TODO Rename tcp socket and server stuff
+*** DONE Basic rename
+    socket -> tcp-client, server -> tcp-listener
+    socket-connect -> tcp-connect, server-listen -> tcp-listen
+*** TODO Update http server
+*** TODO Update examples
+*** TODO Update documentation
+** TODO Separate with-event-loop into components
+   Forcing everyone to write their code inside a with-event-loop kind of smells. It would be nice if
+   listener/connection setups weren't required to be in the body of a macro.
+   The solution is basically to have our own event-base object, with which sockets are registered.
+** TODO Refactor general socket stuff to a socket.lisp module in tcp/
+   tcp-listener expects to use a socket of some sort for its purposes, and calling its listener
+   socket 'tcp-client' is a little awkward. Probably a better factoring of things anyway.
+** TODO Move event stuff to its own package
+   #:conserv.event for the event-base and timer stuff.
+** TODO Require per-client drivers
+   Servers should be required to implement a make-client-driver generic function, used to create
+   per-client driver instances.
+** TODO Safe multithreading
+   One thread listens for events, worker threads take care of performing reads and writes. Data is
+   passed around through channels. Prototype it with chanl. Sockets can only be active in one thread
+   at a time, otherwise, there could be races.
+** TODO Try cl-event2
+** TODO Try cl-ev
+** TODO Scrap IOLib
+   Just extract the socket-specific stuff from it.
+** TODO IP binding
+   Allow sockets and servers to bind to particular local IP addresses
+** TODO Document CLOSE behavior
+** TODO Unit tests
+** TODO Figure out how to do a proper TCP handshake socket close
+   The websocket standard mentions something about calling shutdown(), reading until EOF from
+   client, and -then- calling close() on the socket. I've been assuming CL:CLOSE on an iolib socket
+   does the former and CL:CLOSE with :ABORT T forces the latter. Not sure if this is right.
+   ...no, it doesn't look like that's the case. Bleh.
+** TODO Call on-server-error
+   Does this make sense? I guess probably.
+** TODO Dynamic buffer sizes
+   Allow on-the-fly user-configurable buffer sizes?
+** TODO Port sharing between servers(???)
+   It would be nice if we could spawn, say, one thread per core, and have them all be listening on
+   the same port.
+   fe[nl]ix says this could be done by doing accept-connection :wait nil, and checking whether we
+   got a connection or not. Once we have a connection, use a priority queue holding all the
+   different listener threads, and use that to figure out which thread loop to send the incoming
+   client to.
+** TODO setf client-timeout
+** TODO on-client-timeout
+** TODO on-client-end
+   There's a FIN packet. Handle that?
+** TODO Implement better stream-line-column and stream-write-char methods for client
+** TODO Non-blocking server loop
+   Is it worthwhile to have a 'loop' that must be iterated manually? Meh. Let them use threads.
+** TODO Datagram socket support
+   I guess this'll require a bit more restructuring than I thought, possible a completely separate
+   server (which it may as well be, i guess). Need to educate myself about udp :)
+** TODO ipv6 support
+   Future. I don't see a need for this right now. IOLib supports it, so it's just a matter of adding it.
+** TODO Windows support
+   Probably part of scrapping iolib
+* HTTP server
+** DONE Figure out how to make sure all output is flushed before closing a socket.
+** DONE Write an http server that parses the header section into a usable header object.
+** DONE Write enough of the http server to be able to run examples/hello-http.lisp
+** DONE Clean up socket closure for server and client
+   Fixing the flush thing seems to have screwed up other things. Unmonitored fds wtf?
+** DONE Convert header parsing to use a parser object instead of a continuation.
+   It's too low-level to be doing a continuation API.
+** DONE Support 100-continue
+   If there's an "Expect: 100-continue" header, respond with "HTTP/1.1 100 Continue"
+** DONE Support line continuations in headers
+   iiuc, single headers, such as the cookies header, can span multiple lines. There's special syntax
+   for this, and it should be supported.
+** DONE Support Connection: keep-alive
+   This involves sharing a socket between multiple consecutive request/reply pairs. It also involves
+   figuring out the meaning of CLOSE on request vs reply, and so on.
+   On top of that, there should be a timeout on the keepalives -- if the other end doesn't make an
+   http request within a certain amount of time, the connection should be closed. This should
+   probably be user-configurable.
+   Update: This gets trickier... HTTP/1.1 uses keep-alives by default, whereas HTTP/1.0 only uses
+   them when Connection: keep-alive is specified. Furthermore, switching to "keep-alive-by-default"
+   really fucks with httperf. I also noticed Apache seems to default to requiring Connection:
+   keep-alive, so maybe that's the wiser choice.
+   Also, it seems my current 'keep-alive' implementation sucks and is triggering resets in
+   httperf. :(
+   Gonna have to refer to the RFC for the exact behavior here.
+   Try sending the content-length!
+   Update: Content-length it was. For plain old streaming, I imagine chunked encoding will be
+   acceptable, too.
+** DONE Headers as keywords
+   Go ahead and handle headers as keywords lisp-side. Might even speed things up.
+** DONE Consistent, simple control of external-format for requests and replies
+   binaryp should be replaced with :external-format-in (or nil :octets :binary) or something like
+   that. Everything is sent as binary anyway.
+** DONE Support chunked encoding
+   This is needed for streaming data, and will help with keep-alive.
+   UPDATE: The sketch is there... but to properly support this, we'll probably need to completely
+   bypass the sockets' lower-level data encoding, so we can actually have access to output lengths.
+   Additionally, it would probably be preferable if the chunked encoding was done around the entire
+   current output buffer. Either I'll have to duplicate functionality present in lower-level
+   sockets, or an interface will need to be made available for getting at this data and modifying
+   the output.
+** DONE Support pausing/closing of requests and replies separately.
+   Should be able to stop reading client input while still writing back to the client, and possibly
+   vice versa. CLOSE shouldn't necessarily close the underlying socket for the request/reply
+   objects.
+** DONE Support Upgrade
+   This is a bit complicated, I think -- upgrading means an alternate protocol to the standard
+   0.9/1.0/1.1 HTTP that conserv.http supports -- or even not HTTP at all.
+
+   One -could- instruct users to simply swap out a driver from underneath on-request-upgrade, but
+   that would potentially leave a lot of things hanging (such as the logistics of closing and
+   unregistering the *request* and *reply* objects).
+
+   This seems wrong, though -- what does a client library actually need in order to do what it needs
+   to do with the connection established through the HTTP request? Should I give them direct access
+   to the underlying socket? What about expecting them to build whatever they need on top of
+   *request* and *reply*?
+
+   Things needed on an upgrade:
+   * End the request and reply.
+   * Deregister the socket with the http server.
+   * call on-http-upgrade using *request*, *socket*, and the post-request-parse data
+   * Skip on-http-request
+** DONE Support CONNECT method
+   Just treat it the same as Upgrade?
+** DONE Move http-server/request/reply into separate files
+** DONE Support status messages
+** DONE Add docstrings to all the protocols
+** DONE Turn off keep-alive if Connection: close is set in the reply.
+** DONE Clean up horrible naming of http-server-driver-related stuff
+   Makes my head spin.
+** DONE Rough websocket example
+   For demo purposes
+** DONE User-controlled 100-continue
+   Use a callback to allow users to respond to this as they please.
+** DONE Export all appropriate symbols
+   Other symbols should be exported as functionality is added.
+** DONE Figure out the whole closing logic for server/request/reply
+** DONE Documentation
+   Document the external API.
+** DONE Merge *request* and *reply* into just *request*
+** DONE Figure out why the hell examples.http.echo doesn't work
+** DONE Figure out why (close *socket*) doesn't work after an upgrade
+   Does it work in the echo server?...
+** DONE Make sure the various HTTP versions are properly supported
+   http://jmarshall.com/easy/http/
+** DONE Add docstrings to interface functions
+** DONE Remote host/port for *request*
+** TODO Add a GET argument parser
+** TODO Unit tests
+** TODO Patch babel to use :eol-style
+** TODO Figure out how errors should be handled at different levels
+   For now, on-socket-error is handled, but things need to be done in different ways depending on
+   how and when the error happens. For example, if an error happens during header parsing
+** TODO Make sure all http-related events are properly called
+   I don't see any on-*-error calls, for example.
+** TODO Handle all interesting tcp server/socket events.
+** TODO Define useful constants for the various http return codes
+   \+http-ok\+ => (200 . "OK"), etc.
+** TODO Support trailers
+** TODO Go through hunchentoot's API and see if there's anything else that should be included
+   Figure out the things that are low-level enough to belong in conserv.http. Ignore things like
+   sessions and cookies.
+** TODO Header improvements
+*** TODO Header manipulation
+    All manipulation functions should have some nice compiler macros to make sure header information
+    gets precompiled as much as possible.
+**** DONE set-headers
+**** TODO add-headers
+**** TODO remove-headers
+*** TODO Collect multiple headers into one key in the headers alist
+*** TODO Support bogus newlines
+    The standard says CRLF, but LF alone should be allowed if a certain server flag is switched on.
+*** DONE Fast parser
+    See what madnificent does. If all else fails, look at nginx's parser and just translate it.
+* TLS
+* WebSockets
+** TODO Implement the latest websockets protocol.
+* Socket.io
+** TODO Write a socket.io-compliant server.
+** TODO Get it to run on the same port as an http server.
+* HTCPCP
+** TODO Implement a controller server
+   https://www.ietf.org/rfc/rfc2324.txt
