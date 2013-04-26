@@ -92,16 +92,16 @@ written to the user agent, and queued output will not be flushed before closing"
     (setf (gethash socket (http-server-connections server))
           *request*)))
 
-(defmethod on-server-connection ((server http-server) socket)
+(defmethod on-tcp-listener-connection ((server http-server) socket)
   (let ((*http-server* server)
         (*tcp-client* socket))
     (on-http-connection (http-server-driver server)))
   (new-request server socket))
 
-(defmethod on-socket-data ((server http-server) data
-                           &aux
-                           (driver (http-server-driver server))
-                           (socket *tcp-client*))
+(defmethod on-tcp-client-data ((server http-server) data
+                               &aux
+                                 (driver (http-server-driver server))
+                                 (socket *tcp-client*))
   (let ((*request* (gethash socket (http-server-connections server)))
         (*http-server* server))
     (case (request-state *request*)
@@ -168,15 +168,15 @@ written to the user agent, and queued output will not be flushed before closing"
 (defun unregister-http-socket (server socket)
   (remhash socket (http-server-connections server)))
 
-(defmethod on-socket-close ((server http-server))
+(defmethod on-tcp-client-close ((server http-server))
   (unregister-http-socket server *tcp-client*))
-(defmethod on-server-listen ((server http-server))
+(defmethod on-tcp-listener-listen ((server http-server))
   (let ((*http-server* server))
     (on-http-listen (http-server-driver server))))
-(defmethod on-server-close ((server http-server))
+(defmethod on-tcp-listener-close ((server http-server))
   (unless (http-server-closed-p server)
     (close server :abort t)))
-(defmethod on-socket-error ((server http-server) error)
+(defmethod on-tcp-client-error ((server http-server) error)
   (on-http-error (http-server-driver server) error))
 
 (defmethod close ((server http-server) &key abort)

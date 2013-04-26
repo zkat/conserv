@@ -10,10 +10,10 @@
                 #:on-request-upgrade)
   ;; Upgrading a connection gives us the raw *socket*, so we need to pull those symbols in.
   (:import-from #:conserv.tcp
-                #:*socket*
-                #:on-socket-data
-                #:socket-driver
-                #:socket-external-format-out))
+                #:*tcp-client*
+                #:on-tcp-client-data
+                #:tcp-client-driver
+                #:tcp-client-external-format-out))
 (cl:in-package #:conserv.examples.http.upgrade)
 
 (defclass http () ())
@@ -27,21 +27,21 @@
   (close *request*))
 
 (defclass websocket () ())
-(defmethod on-socket-data ((driver websocket) data)
+(defmethod on-tcp-client-data ((driver websocket) data)
   ;; Our websocket handler will simply be an echo server.
-  (write-sequence data *socket*))
+  (write-sequence data *tcp-client*))
 
 ;; To trigger the upgrade, simply make an HTTP request with either the CONNECT request method, or an
 ;; Upgrade: headers from your favorite http client.
 (defmethod on-request-upgrade ((driver http) data)
-  (setf (socket-driver *socket*) (make-instance 'websocket)
-        (socket-external-format-out *socket*) :ascii)
+  (setf (tcp-client-driver *tcp-client*) (make-instance 'websocket)
+        (tcp-client-external-format-out *tcp-client*) :ascii)
   (let ((crlf (coerce '(#\return #\linefeed) 'string)))
-    (format *socket* "HTTP/1.1 101 Switching Protocols~A" crlf)
-    (format *socket* "Upgrade: WebSocket~A" crlf)
-    (format *socket* "Connection: Upgrade~A~A" crlf crlf))
-  (setf (socket-external-format-out *socket*) nil)
-  (on-socket-data driver data))
+    (format *tcp-client* "HTTP/1.1 101 Switching Protocols~A" crlf)
+    (format *tcp-client* "Upgrade: WebSocket~A" crlf)
+    (format *tcp-client* "Connection: Upgrade~A~A" crlf crlf))
+  (setf (tcp-client-external-format-out *tcp-client*) nil)
+  (on-tcp-client-data driver data))
 
 (defun start ()
   (with-event-loop ()
